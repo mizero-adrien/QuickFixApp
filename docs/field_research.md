@@ -2,7 +2,7 @@
 # Field Research — QuickFix App
 **Date:** March 27, 2026
 **Location:** Kigali, Rwanda
-**Team Members:** Member 1 | Member 2
+**Team Members:** Bernardine UWITUZE |Adrien MIZERO
 
 ## Research Overview
 
@@ -11,7 +11,7 @@
 **Method:** Independent observation (10–15 minutes) + 1 user interview per team member.
 
 
-## Member 1 [Bernardine UWITUZE] — Field Research
+## Member 1 Bernardine UWITUZE— Field Research
 
 **Location:** Residential area, Gasabo District, Kigali
 **Date & Time:** March 25, 2026 | 10:00 AM – 10:20 AM
@@ -71,7 +71,7 @@
 | 07:13 | Subject explains he gets most jobs through a single contractor. "If that contractor stops calling, I have nothing." |
 
 ### User Interview Notes
-*Duration:* ~11 minutes | *Language:* Kinyarwanda + English
+*Duration:* 11 minutes | *Language:* Kinyarwanda + English
 
 *Key Quotes:*
 1. "I wait here every morning hoping someone comes. Some days I earn well, some days nothing at all."
@@ -87,10 +87,32 @@
 4. *Middleman dependency* — Many workers rely on a single contractor, creating a fragile income structure.
 5. *No direct client access* — Workers cannot market themselves independently; all discovery is passive.
 
-## Team Problem Statement
+## Team Synthesis
 
-Main problem:
+### Synthesis Workshop Notes
+**Date:** March 2026 | **Method:** Affinity mapping — both members' friction points listed, grouped by recurring theme
 
-Constraints considered:
-1.
-2.
+### Emergent Themes
+
+| Theme | Friction Points | Members |
+|-------|----------------|---------|
+| Discovery — finding workers or clients | 2 friction points | Both |
+| Trust, vetting & safety | 2 friction points | Both |
+| Reliability & scheduling | 2 friction points | Both |
+| Payment & financial protection | 2 friction points | Both |
+| Worker income & visibility | 2 friction points | Both |
+
+### Core Problem Statement
+
+> **In Kigali, homeowners cannot reliably discover, vet, and book trustworthy home service workers (cleaners, plumbers, electricians, painters), while skilled informal workers have no structured way to reach clients, build a reputation, or earn a stable income — leaving both sides trapped in slow, trust-broken informal networks.**
+
+### Real-World Constraints Addressed (from Progressive Project Guide)
+
+1. **Limited internet connectivity** — App must cache worker profiles and booking history for offline access; data syncs when connection is restored.
+2. **Low-end Android device prevalence** — Most users in Kigali use budget Android smartphones; the Flutter app must be lightweight and performant.
+3. **Mobile money as primary payment rail** — MTN MoMo and Airtel Money dominate in Rwanda; no card dependency should be required.
+4. **Trust in the informal economy** — Without formal credentials, a visible rating, review, and ID verification system is the primary trust mechanism.
+
+
+*Document prepared by Triad — Phase 1 Field Research*
+*All observations and interviews were conducted independently by each team member.*
