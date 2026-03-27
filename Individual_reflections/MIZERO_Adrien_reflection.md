@@ -20,7 +20,7 @@ The wireframing process pushed me more than I expected. My first designs were to
 
 I am proud of the concept we built and confident it solves a real problem.
 
----
+
 
 ## Self-Assessment of Contribution
 
