@@ -55,9 +55,37 @@
 * No reviews or ratings system to assess quality | Must rely entirely on word of mouth from neighbours |
 
 ## Member 2 Observations
-...
+## Member 2 — Adrien MIZERO
+*Observation Location:* Kicukiro, near a local hardware shop
+*Observation Time:* 07:00 – 07:15 AM, Friday, March 2026
+*Interview Subject:* Female informal plumber/electrician, ~32 years old, self-employed
 
----
+### Timestamped Observations
+
+| Time | Observation |
+|------|-------------|
+| 07:00 | Subject waits near a hardware shop for a client arranged by phone the previous day. |
+| 07:04 | Client does not arrive. He calls twice — no answer. He continues waiting. |
+| 07:08 | Another man approaches and asks if he does electrical work. He says yes and quotes a price immediately. |
+| 07:10 | They negotiate for about 4 minutes over the price. The man leaves without agreeing. |
+| 07:13 | Subject explains he gets most jobs through a single contractor. "If that contractor stops calling, I have nothing." |
+
+### User Interview Notes
+*Duration:* ~11 minutes | *Language:* Kinyarwanda + English
+
+*Key Quotes:*
+1. "I wait here every morning hoping someone comes. Some days I earn well, some days nothing at all."
+2. "I have skills but no way to show people. No photos of my work, no certificate — just my word."
+3. "Clients cancel last minute all the time. I travel and lose money on transport for nothing."
+4. "I would love a steady stream of jobs. Even three per week would change my life."
+5. "If there was an app where I could list my skills and customers could find and book me directly, that's all I need."
+
+### Friction Points Identified
+1. *Income instability* — Workers rely on passive walk-up clients or a single middleman contractor; no consistent job pipeline.
+2. *No portfolio system* — Skilled workers have no way to display past work or credentials digitally.
+3. *Client no-shows* — Informal appointments are cancelled without notice or compensation for travel costs incurred.
+4. *Middleman dependency* — Many workers rely on a single contractor, creating a fragile income structure.
+5. *No direct client access* — Workers cannot market themselves independently; all discovery is passive.
 
 ## Team Problem Statement
 
