@@ -1,85 +1,206 @@
 [![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=23237678)
 
 
-Project Ideation Assessment: "Marketplace App Concept Development"
-Due March 27, 2026 11:59 PM
-Flutter Widgets & UI Design
-Instructions
+# QuickFix 🔧
+### Find. Book. Fix.
 
-Assessment Context
+A two-sided mobile marketplace connecting homeowners and tenants in Kigali,
+Rwanda with verified, rated home service artisans — built with Flutter & Dart.
 
+---
 
-This milestone evaluates your team's ability to develop a unique marketplace app concept grounded in real-world observation, setting the foundation for your progressive project that culminates in the Week 9 Phase 4 showcase presentation. Success here directly impacts your ability to deliver a compelling final product.
+## The Problem We Solve
 
-Assessment Tasks
+Homeowners and tenants in Kigali cannot reliably find, verify, or pay
+qualified home service artisans. Artisans have no digital platform to
+showcase their skills, manage bookings, or receive secure payment.
+The result is a trust-less system built entirely on word of mouth —
+causing financial losses, long delays, and poor service quality on
+both sides of the market.
 
-Task 1: Field Research & Problem Identification (40% weight)
+**Evidence from field research (Gasabo & Kimironko, March 27, 2026):**
+- A landlord made 4 phone calls before finding anyone to fix a burst pipe
+- The same landlord lost 15,000 RWF to an artisan who never returned
+- An electrician waits at a hardware shop daily with no guaranteed income
+- Price for the same job varied between 10,000 RWF and 25,000 RWF
 
-Objective: Demonstrate evidence-based problem discovery
+---
 
-Requirements:
-Each team member conducts independent field research (10-15 minutes observation + 1 user interview)
-Document 5 friction points per member with direct quotes
-Team synthesizes findings into 1 core problem statement
-Map findings to at least 2 real-world constraints from the progressive project guide
-Evidence Required:
-docs/field_research.md with timestamped observations
-Audio/video recordings or detailed notes from user interviews
-Team synthesis document explaining problem selection rationale
-Assessment Criteria:
-Authenticity (20%): Evidence shows genuine observation vs. hypothetical scenarios
-Depth (10%): Friction points are specific, actionable, and user-focused
-Synthesis (10%): Clear connection between individual findings and team problem statement
-Task 2: App Concept Development (35% weight)
+## Team Members
 
-Objective: Create a viable marketplace app solution
+| Name | Registration Number | Primary Contributions |
+|---|---|---|
+| [Adrien MIZERO] | [223019090] | Flutter UI, Navigation, Forms |
+| [Bernardine UWITUZE] | [Partner Reg Number] | Data Models, OOP, Dart Fundamentals |
 
-Requirements:
-Develop app name that reflects local context and problem solution
-Define target users, use cases, and core value proposition
-Design 3-5 MVP features directly addressing identified friction
-Address at least 3 constraints from the progressive project guide
-Create initial wireframes or user flow diagrams
-Evidence Required:
-App concept document with problem-solution fit analysis
-Feature list with rationale for each (why this solves the friction)
-Constraint integration plan (how app design addresses real-world limitations)
-Initial UI sketches or digital wireframes
-Assessment Criteria:
-Problem-Solution Fit (15%): Features directly address identified friction points
-Feasibility (10%): Concept can be built with course Flutter/Dart skills
-Innovation (10%): Solution offers unique value vs. existing local commerce methods
-Task 3: Team Collaboration & Planning (25% weight)
+---
 
-Objective: Demonstrate effective team dynamics and project planning
+## App Features
 
-Requirements:
-Establish team communication protocols and meeting schedule
-Create initial project roadmap aligned with progressive project guide phases
-Assign initial roles and responsibilities
-Develop success criteria for Phase 4 showcase
-Evidence Required:
-Team charter document with agreed working protocols
-Project timeline mapping features to weeks 1-9
-GitHub repository setup with proper team access
-Phase 4 success criteria (what makes your showcase compelling)
-Assessment Criteria:
-Organization (10%): Clear project structure and planning
-Communication (10%): Evidence of collaborative decision-making
-Vision (5%): Realistic goals aligned with course timeline and skills
-Submission Requirements
-Team Deliverables :
-Complete GitHub repository with documentation via this Link
-docs/field_research.md - Research findings
-docs/app_concept.md - App specification
-docs/team_charter.md - Collaboration plan
-wireframes/ folder with initial designs
-Individual Deliverables (submitted separately via this assignment):
-Personal reflection (200-300 words) on team dynamics and learning
-Self-assessment of contribution to each task
-Academic Integrity
-All research must be original and conducted by team members
-User interviews must be real (not hypothetical)
-Concepts must be team-developed (not copied from existing apps)
-Any external inspiration must be properly cited and adapted
-Any tools used must be mentioned and a clear mention of why you used it(including AI tools)
+### For Homeowners
+- Browse verified, rated artisans by category
+- View full artisan profiles with skills, reviews, and pricing
+- Post a job request with budget and description
+- Book an artisan directly from their profile
+- Track job status in real time
+
+### For Artisans
+- Set up a professional profile after signup
+- Browse available job requests from homeowners
+- Send bids with custom price and note
+- Build reputation through ratings and reviews
+
+---
+
+## Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Flutter 3.38.9 | Cross-platform mobile UI framework |
+| Dart | Programming language |
+| Material Design 3 | UI component system and theming |
+| Flutter Navigator | Multi-screen named route navigation |
+| Stateful Widgets | Local state management |
+
+---
+
+## Project Structure
+lib/
+├── models/
+│   ├── artisan.dart        # Artisan, VerifiedArtisan, ServiceProvider, Rateable
+│   ├── homeowner.dart      # Homeowner, UserSession, UserType
+│   ├── job.dart            # Job, JobStatus, ServiceCategory
+│   └── review.dart         # Review
+├── screens/
+│   ├── splash_screen.dart          # Animated splash screen
+│   ├── login_screen.dart           # Login with email/password
+│   ├── signup_screen.dart          # Signup with role selection
+│   ├── artisan_setup_screen.dart   # Artisan profile setup
+│   ├── home_screen.dart            # Homeowner home / Artisan dashboard
+│   ├── artisan_detail_screen.dart  # Artisan profile detail
+│   ├── booking_form_screen.dart    # Job booking form
+│   ├── job_post_screen.dart        # Homeowner job posting form
+│   └── job_list_screen.dart        # Artisan job listings
+├── widgets/
+│   ├── artisan_card.dart    # Reusable artisan card widget
+│   ├── category_chip.dart   # Reusable category filter chip
+│   └── review_card.dart     # Reusable review card widget
+├── data/
+│   └── dummy_data.dart      # Sample artisans, jobs, reviews
+├── theme/
+│   └── app_theme.dart       # Material Design 3 theme and colours
+└── main.dart                # App entry point and named routes
+
+---
+
+## How to Run
+
+### Prerequisites
+- Flutter SDK 3.38.9 or higher
+- Android SDK or iOS Simulator
+- VS Code with Flutter and Dart extensions
+
+### Steps
+
+**1. Clone the repository**
+```bash
+git clone [https://github.com/Pelino-Courses/progressive-capstone-project-triad.git]
+cd progressive-capstone-project-triad
+```
+
+**2. Install dependencies**
+```bash
+flutter pub get
+```
+
+**3. Run the app**
+```bash
+flutter run
+```
+
+**4. Verify environment**
+```bash
+flutter doctor
+```
+
+### Test Accounts
+
+Since this version uses dummy data, use any credentials to log in:
+
+| Role | How to access |
+|---|---|
+| Homeowner | Sign up → select Homeowner → fill form |
+| Artisan | Sign up → select Artisan → complete profile setup |
+
+---
+
+## Flutter Doctor Output
+Doctor summary (to see all details, run flutter doctor -v):
+[√] Flutter (Channel stable, 3.38.9)
+[√] Windows Version (Windows 11 Home)
+[√] Android toolchain - develop for Android devices
+[√] Chrome - develop for the web
+[√] Visual Studio - develop Windows apps
+[√] Connected device (3 available)
+[√] Network resources
+
+No issues found!
+
+---
+
+## Mini-Capstone Snapshot — Parts A–D
+
+This submission adds the following to the progressive project:
+
+### Part A — Dart Fundamentals
+- Explicit typed variables, `final`, `const` throughout all model and screen files
+- Null safety operators (`?`, `!`, `??`) used in `UserSession`, `Homeowner`, and screen arguments
+- `List`, `Map`, and `Set` used in `dummy_data.dart`, `artisan_setup_screen.dart`, and `job_list_screen.dart`
+- Control flow with `if/else`, `switch`, and ternary operators across models and screens
+
+### Part B — OOP & Data Models
+- 4 model classes: `Artisan`, `VerifiedArtisan`, `Homeowner`, `Job`, `Review`
+- Inheritance: `VerifiedArtisan extends Artisan`
+- Abstract class: `ServiceProvider` implemented by both `Artisan` and `Homeowner`
+- Mixin: `Rateable` mixed into `Artisan` for shared rating behaviour
+- `Future` and `async/await` used in `fetchArtisans()`, `fetchReviewsForArtisan()`, and all form submissions
+
+### Part C — Flutter UI & Widgets
+- Home screen displays real dummy data in a 2-column `GridView`
+- Layout widgets used: `GridView`, `ListView`, `Column`, `Row`, `Stack`
+- 3 custom reusable widgets: `ArtisanCard`, `CategoryChip`, `ReviewCard`
+- Material Design 3 theme applied via `AppTheme` with full `ColorScheme`
+
+### Part D — Navigation & Forms
+- 7 named routes connected via `MaterialApp` routes map
+- Data passed between screens: artisan object from Home → Detail → Booking Form
+- 3 validated forms: Login, Signup, Booking Form, Job Post, Artisan Setup
+- Form validation includes email regex, phone pattern, length checks, password match
+
+---
+
+## Design Mockups
+
+Stitch mockups are in the `/design/` folder:
+
+| File | Screen |
+|---|---|
+| `01_home_screen.png` | Homeowner home with artisan grid |
+| `02_detail_screen.png` | Artisan profile detail |
+| `03_form_screen.png` | Job booking request form |
+
+See `DESIGN.md` for the full design system including colour palette,
+typography, and component style rationale.
+
+---
+
+## Repository
+
+- **GitHub:** [https://github.com/Pelino-Courses/progressive-capstone-project-triad.git]
+- **Submission Tag:** `mini-capstone-part-a-d`
+
+---
+
+*University of Rwanda — BSc Information Technology*
+*Mobile Application Development with Flutter & Dart*
+*Mini-Capstone Parts A–D | 2026*
