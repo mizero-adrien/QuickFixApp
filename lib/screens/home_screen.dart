@@ -46,7 +46,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _getBody() {
     // Covers A4 — if/else based on user type
     if (UserSession.userType == UserType.artisan) {
-      return const JobListScreen();
+      switch (_currentIndex) {
+        case 0:
+          return const JobListScreen();
+        case 1:
+          return _buildArtisanBids();
+        case 2:
+          return _buildArtisanProfile();
+        case 3:
+          return _buildArtisanSettings();
+        default:
+          return const JobListScreen();
+      }
     }
 
     switch (_currentIndex) {
@@ -69,8 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isArtisan = UserSession.userType == UserType.artisan;
     final userName = isArtisan
         ? UserSession.currentArtisan?.name.split(' ').first ?? 'Artisan'
-        : UserSession.currentHomeowner?.name.split(' ').first ??
-            'User';
+        : UserSession.currentHomeowner?.name.split(' ').first ?? 'User';
 
     return Scaffold(
       appBar: AppBar(
@@ -99,7 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Colors.white),
             onPressed: () {},
           ),
-          // Logout button
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () {
@@ -131,7 +140,35 @@ class _HomeScreenState extends State<HomeScreen> {
           : null,
 
       bottomNavigationBar: isArtisan
-          ? null
+          ? BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: AppTheme.primary,
+              unselectedItemColor: AppTheme.textSecondary,
+              currentIndex: _currentIndex,
+              onTap: (index) => setState(() => _currentIndex = index),
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.work_outline),
+                  activeIcon: Icon(Icons.work),
+                  label: 'Jobs',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.gavel_outlined),
+                  activeIcon: Icon(Icons.gavel),
+                  label: 'My Bids',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person_outline),
+                  activeIcon: Icon(Icons.person),
+                  label: 'Profile',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.settings_outlined),
+                  activeIcon: Icon(Icons.settings),
+                  label: 'Settings',
+                ),
+              ],
+            )
           : BottomNavigationBar(
               type: BottomNavigationBarType.fixed,
               selectedItemColor: AppTheme.primary,
@@ -166,8 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Homeowner home view
   Widget _buildHomeownerHome() {
     final userName =
-        UserSession.currentHomeowner?.name.split(' ').first ??
-            'User';
+        UserSession.currentHomeowner?.name.split(' ').first ?? 'User';
     return RefreshIndicator(
       onRefresh: _loadArtisans,
       child: SingleChildScrollView(
@@ -223,12 +259,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Search bar
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 decoration: InputDecoration(
-                  hintText:
-                      'Search for a plumber, electrician...',
+                  hintText: 'Search for a plumber, electrician...',
                   prefixIcon: const Icon(
                     Icons.search,
                     color: AppTheme.textSecondary,
@@ -250,8 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 44,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   GestureDetector(
                     onTap: () =>
@@ -320,16 +353,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Artisan grid — covers C2 (GridView)
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _filteredArtisans.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32),
                         child: Text(
                           'No artisans found for this category.',
-                          style: TextStyle(
-                              color: AppTheme.textSecondary),
+                          style:
+                              TextStyle(color: AppTheme.textSecondary),
                         ),
                       ),
                     )
@@ -338,8 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
                       shrinkWrap: true,
-                      physics:
-                          const NeverScrollableScrollPhysics(),
+                      physics: const NeverScrollableScrollPhysics(),
                       childAspectRatio: 0.75,
                       children: _filteredArtisans
                           .map(
@@ -374,8 +405,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 120,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: _artisans.length,
                 itemBuilder: (context, index) {
                   final artisan = _artisans[index];
@@ -394,8 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color:
-                                Colors.black.withValues(alpha:0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -406,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           CircleAvatar(
                             radius: 24,
                             backgroundColor:
-                                AppTheme.primary.withValues(alpha:0.1),
+                                AppTheme.primary.withValues(alpha: 0.1),
                             child: Text(
                               artisan.name[0],
                               style: const TextStyle(
@@ -448,8 +477,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     const SizedBox(width: 2),
                                     Text(
                                       '${artisan.rating} (${artisan.completedJobs} jobs)',
-                                      style: const TextStyle(
-                                          fontSize: 11),
+                                      style:
+                                          const TextStyle(fontSize: 11),
                                     ),
                                   ],
                                 ),
@@ -533,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Profile screen placeholder
+  // Homeowner profile screen
   Widget _buildProfileScreen() {
     final homeowner = UserSession.currentHomeowner;
     return SingleChildScrollView(
@@ -543,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
           CircleAvatar(
             radius: 48,
-            backgroundColor: AppTheme.primary.withValues(alpha:0.1),
+            backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
             child: Text(
               homeowner?.name[0] ?? 'U',
               style: const TextStyle(
@@ -571,10 +600,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha:0.1),
+              color: AppTheme.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -587,7 +616,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          // Logout button
           OutlinedButton.icon(
             onPressed: () {
               UserSession.logout();
@@ -605,6 +633,537 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Artisan bids screen
+  Widget _buildArtisanBids() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('🤝', style: TextStyle(fontSize: 48)),
+          SizedBox(height: 16),
+          Text(
+            'My Bids',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Bids you have sent will appear here',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Artisan profile screen
+  Widget _buildArtisanProfile() {
+    final artisan = UserSession.currentArtisan;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // Profile photo with camera icon
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 52,
+                backgroundColor:
+                    AppTheme.primary.withValues(alpha: 0.1),
+                child: Text(
+                  artisan?.name[0] ?? 'A',
+                  style: const TextStyle(
+                    fontSize: 44,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: AppTheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            artisan?.name ?? 'Artisan',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          Text(
+            artisan?.trade ?? '',
+            style: const TextStyle(
+              fontSize: 15,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Verified badge
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.verified, color: AppTheme.success, size: 16),
+                SizedBox(width: 4),
+                Text(
+                  'Verified Artisan',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.success,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Stats row
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem(
+                  '${artisan?.rating ?? 0.0}★',
+                  'Rating',
+                  AppTheme.secondary,
+                ),
+                _buildStatItem(
+                  '${artisan?.completedJobs ?? 0}',
+                  'Jobs Done',
+                  AppTheme.primary,
+                ),
+                _buildStatItem(
+                  '${artisan?.yearsOfExperience ?? 0} yrs',
+                  'Experience',
+                  AppTheme.success,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Skills
+          Align(
+            alignment: Alignment.centerLeft,
+            child: const Text(
+              'Skills',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: (artisan?.skills ?? [])
+                .map(
+                  (skill) => Chip(
+                    label: Text(
+                      skill,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.primary,
+                      ),
+                    ),
+                    backgroundColor:
+                        AppTheme.primary.withValues(alpha: 0.08),
+                    side: BorderSide(
+                        color: AppTheme.primary.withValues(alpha: 0.3)),
+                    padding: EdgeInsets.zero,
+                  ),
+                )
+                .toList(),
+          ),
+
+          const SizedBox(height: 24),
+
+          // About
+          Align(
+            alignment: Alignment.centerLeft,
+            child: const Text(
+              'About',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            artisan?.about ?? '',
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppTheme.textSecondary,
+              height: 1.6,
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Starting price
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Starting Price',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                Text(
+                  '${artisan?.startingPrice ?? 0} RWF',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.secondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Edit profile button
+          OutlinedButton.icon(
+            onPressed: () {},
+            icon: const Icon(Icons.edit_outlined,
+                color: AppTheme.primary),
+            label: const Text(
+              'Edit Profile',
+              style: TextStyle(color: AppTheme.primary),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              side: const BorderSide(color: AppTheme.primary),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Logout button
+          OutlinedButton.icon(
+            onPressed: () {
+              UserSession.logout();
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+            icon: const Icon(Icons.logout, color: AppTheme.error),
+            label: const Text(
+              'Logout',
+              style: TextStyle(color: AppTheme.error),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              side: const BorderSide(color: AppTheme.error),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // Artisan settings screen
+  Widget _buildArtisanSettings() {
+    final artisan = UserSession.currentArtisan;
+    bool isAvailable = artisan?.isAvailable ?? true;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          const Text(
+            'Settings',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Availability toggle
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Available for Jobs',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      isAvailable
+                          ? 'You are visible to homeowners'
+                          : 'You are hidden from homeowners',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                Switch(
+                  value: isAvailable,
+                  activeColor: AppTheme.success,
+                  onChanged: (value) =>
+                      setState(() => isAvailable = value),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Notifications setting
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Job Notifications',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Get notified when new jobs are posted',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                Switch(
+                  value: true,
+                  activeColor: AppTheme.primary,
+                  onChanged: (value) {},
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Account info
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Account Information',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const Divider(height: 24),
+                _buildInfoRow(
+                    Icons.person_outline, 'Name', artisan?.name ?? ''),
+                const SizedBox(height: 12),
+                _buildInfoRow(Icons.phone_outlined, 'Phone',
+                    artisan?.phoneNumber ?? ''),
+                const SizedBox(height: 12),
+                _buildInfoRow(Icons.location_on_outlined, 'Location',
+                    artisan?.location ?? ''),
+                const SizedBox(height: 12),
+                _buildInfoRow(
+                    Icons.work_outline, 'Trade', artisan?.trade ?? ''),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Logout
+          OutlinedButton.icon(
+            onPressed: () {
+              UserSession.logout();
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+            icon: const Icon(Icons.logout, color: AppTheme.error),
+            label: const Text(
+              'Logout',
+              style: TextStyle(color: AppTheme.error),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              side: const BorderSide(color: AppTheme.error),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // Helper widgets
+  Widget _buildStatItem(String value, String label, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppTheme.textSecondary),
+        const SizedBox(width: 10),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
