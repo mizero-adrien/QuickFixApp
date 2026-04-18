@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/job.dart';

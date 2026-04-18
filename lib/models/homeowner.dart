@@ -72,7 +72,7 @@ class UserSession {
     currentArtisan = null;
   }
 
-  static void loginAsArtisan(Artisan artisan) {
+  static void loginAsArtisan(VerifiedArtisan artisan) {
     currentArtisan = artisan;
     userType = UserType.artisan;
     currentHomeowner = null;
