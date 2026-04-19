@@ -249,9 +249,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  const Text(
-                    '🔧',
-                    style: TextStyle(fontSize: 48),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(40),
+                    child: Image.asset(
+                      'assets/images/generalworker.png',
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Text('🔧', style: TextStyle(fontSize: 48)),
+                    ),
                   ),
                 ],
               ),
@@ -432,17 +439,41 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor:
-                                AppTheme.primary.withValues(alpha: 0.1),
-                            child: Text(
-                              artisan.name[0],
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
-                              ),
-                            ),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: artisan.profileImageUrl != null
+                                ? Image.asset(
+                                    artisan.profileImageUrl!,
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            CircleAvatar(
+                                      radius: 24,
+                                      backgroundColor: AppTheme.primary
+                                          .withValues(alpha: 0.1),
+                                      child: Text(
+                                        artisan.name[0],
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor:
+                                        AppTheme.primary.withValues(alpha: 0.1),
+                                    child: Text(
+                                      artisan.name[0],
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ),
+                                  ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(

@@ -75,22 +75,71 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                color: AppTheme.primary.withValues(alpha:0.15),
-                child: Center(
-                  child: CircleAvatar(
-                    radius: 64,
-                    backgroundColor: AppTheme.primary.withValues(alpha:0.2),
-                    child: Text(
-                      artisan.name[0],
-                      style: const TextStyle(
-                        fontSize: 64,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  artisan.profileImageUrl != null
+                      ? Image.asset(
+                          artisan.profileImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                            color: AppTheme.primary.withValues(alpha: 0.15),
+                            child: Center(
+                              child: CircleAvatar(
+                                radius: 64,
+                                backgroundColor:
+                                    AppTheme.primary.withValues(alpha: 0.2),
+                                child: Text(
+                                  artisan.name[0],
+                                  style: const TextStyle(
+                                    fontSize: 64,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: AppTheme.primary.withValues(alpha: 0.15),
+                          child: Center(
+                            child: CircleAvatar(
+                              radius: 64,
+                              backgroundColor:
+                                  AppTheme.primary.withValues(alpha: 0.2),
+                              child: Text(
+                                artisan.name[0],
+                                style: const TextStyle(
+                                  fontSize: 64,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                  // Dark gradient overlay at bottom
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 80,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.5),
+                            Colors.transparent,
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),

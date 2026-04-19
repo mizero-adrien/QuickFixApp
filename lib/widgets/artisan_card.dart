@@ -26,17 +26,42 @@ class ArtisanCard extends StatelessWidget {
               // Artisan photo and availability badge
               Stack(
                 children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AppTheme.primary.withValues(alpha:0.1),
-                    child: Text(
-                      artisan.name[0],
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
-                    ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(36),
+                    child: artisan.profileImageUrl != null
+                        ? Image.asset(
+                            artisan.profileImageUrl!,
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                CircleAvatar(
+                              radius: 36,
+                              backgroundColor:
+                                  AppTheme.primary.withValues(alpha: 0.1),
+                              child: Text(
+                                artisan.name[0],
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                            ),
+                          )
+                        : CircleAvatar(
+                            radius: 36,
+                            backgroundColor:
+                                AppTheme.primary.withValues(alpha: 0.1),
+                            child: Text(
+                              artisan.name[0],
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                          ),
                   ),
                   if (artisan.isAvailable)
                     Positioned(
