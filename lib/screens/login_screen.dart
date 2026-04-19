@@ -13,7 +13,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // Covers A1 — typed variables
+  // Covers A1 — explicitly typed variables
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Covers B5 — async/await
+  // Covers B5 — async/await simulating a login network call
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -42,44 +42,51 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 48),
 
-              // Header
+              // ── Logo + App name + tagline ──────────────────────────────────
+              // Matches image: blue circle with wrench, "QuickFix", "Find. Book. Fix."
               Center(
                 child: Column(
                   children: [
+                    // Blue circular logo
                     Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
                         color: AppTheme.primary,
-                        borderRadius: BorderRadius.circular(20),
+                        shape: BoxShape.circle,
                       ),
-                      child: const Center(
-                        child: Text(
-                          '🔧',
-                          style: TextStyle(fontSize: 40),
-                        ),
+                      child: const Icon(
+                        Icons.build,          // wrench icon matches image
+                        color: Colors.white,
+                        size: 34,
                       ),
                     ),
-                    const SizedBox(height: 16),
+
+                    const SizedBox(height: 12),
+
+                    // App name
                     const Text(
-                      'Welcome Back',
+                      'QuickFix',
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
+                        color: AppTheme.primary,   // blue text matches image
                       ),
                     ),
-                    const SizedBox(height: 8),
+
+                    const SizedBox(height: 4),
+
+                    // Tagline below app name
                     const Text(
-                      'Sign in to continue to QuickFix',
+                      'Find. Book. Fix.',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: AppTheme.textSecondary,
                       ),
                     ),
@@ -87,15 +94,42 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 36),
 
-              // Form
+              // ── "Welcome Back" heading ─────────────────────────────────────
+              const Center(
+                child: Text(
+                  'Welcome Back',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              const Center(
+                child: Text(
+                  'Sign in to continue to QuickFix',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              // ── Form ───────────────────────────────────────────────────────
               Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Email field
+
+                    // Email label
                     const Text(
                       'Email Address',
                       style: TextStyle(
@@ -105,20 +139,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+
+                    // Email field — matches image placeholder "e.g. jean@gmail.com"
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
-                        hintText: 'e.g. john@gmail.com',
+                        hintText: 'e.g. jean@gmail.com',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
-                      // Covers D4 — email format validation
+                      // Covers D4 — email format regex validation
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter your email';
                         }
-                        final emailRegex = RegExp(
-                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                        final emailRegex =
+                            RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
                         if (!emailRegex.hasMatch(value.trim())) {
                           return 'Please enter a valid email address';
                         }
@@ -126,9 +162,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
-                    // Password field
+                    // Password label
                     const Text(
                       'Password',
                       style: TextStyle(
@@ -138,6 +174,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+
+                    // Password field with show/hide toggle
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
@@ -154,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               () => _obscurePassword = !_obscurePassword),
                         ),
                       ),
-                      // Covers D4 — length validation
+                      // Covers D4 — minimum length validation
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your password';
@@ -166,44 +204,61 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
 
-                    const SizedBox(height: 12),
-
-                    // Forgot password
+                    // ── "Forgot Password?" aligned right — matches image ──────
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {},
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                         child: const Text(
                           'Forgot Password?',
-                          style: TextStyle(color: AppTheme.primary),
+                          style: TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Login button
+                    // ── Sign In button — full width, dark blue, rounded ────────
                     _isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            onPressed: _login,
-                            child: const Text(
-                              'Sign In',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                        ? const Center(child: CircularProgressIndicator())
+                        : SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              onPressed: _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                'Sign In',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
 
                     const SizedBox(height: 24),
 
-                    // Divider
+                    // ── OR divider — matches image ─────────────────────────────
                     Row(
                       children: [
-                        Expanded(
-                            child: Divider(color: Colors.grey.shade300)),
+                        Expanded(child: Divider(color: Colors.grey.shade300)),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
@@ -214,14 +269,59 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        Expanded(
-                            child: Divider(color: Colors.grey.shade300)),
+                        Expanded(child: Divider(color: Colors.grey.shade300)),
                       ],
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Sign up redirect
+                    // ── Continue with Google — outlined button, matches image ──
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Google sign-in — to be implemented
+                        },
+                        icon: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade800,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'G',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        label: const Text(
+                          'Continue with Google',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.grey.shade300),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // ── Sign Up redirect — matches image bottom text ───────────
                     Center(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -234,8 +334,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => Navigator.pushNamed(
-                                context, '/signup'),
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/signup'),
                             child: const Text(
                               'Sign Up',
                               style: TextStyle(
@@ -248,6 +348,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ),
+
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),

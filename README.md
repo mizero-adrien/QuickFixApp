@@ -31,7 +31,7 @@ both sides of the market.
 | Name | Registration Number | Primary Contributions |
 |---|---|---|
 | [Adrien MIZERO] | [223019090] | Flutter UI, Navigation, Forms |
-| [Bernardine UWITUZE] | [Partner Reg Number] | Data Models, OOP, Dart Fundamentals |
+| [Bernardine UWITUZE] | [223014064] | Data Models, OOP, Dart Fundamentals |
 
 ---
 
