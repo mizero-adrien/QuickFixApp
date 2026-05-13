@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quickfix/models/homeowner.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -41,41 +43,72 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  // Covers B5 — async/await
+  // Covers B5 — async/await network calls via Supabase
   Future<void> _signup() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() => _isLoading = false);
+      try {
+        final phone = '+250${_phoneController.text.trim()}';
+        final role = _selectedUserType == UserType.homeowner
+            ? 'homeowner'
+            : 'artisan';
 
-      if (mounted) {
-        // Covers A4 — if/else control flow
-        if (_selectedUserType == UserType.homeowner) {
-          // Create homeowner session
-          final homeowner = Homeowner(
-            id: 'h${DateTime.now().millisecondsSinceEpoch}',
-            name: _nameController.text.trim(),
-            phoneNumber: '+250${_phoneController.text.trim()}',
-            location: _districts[_selectedDistrict]!,
-            email: _emailController.text.trim(),
-            district: _selectedDistrict,
-            joinedAt: DateTime.now(),
-          );
-          UserSession.loginAsHomeowner(homeowner);
-          Navigator.pushReplacementNamed(context, '/home');
-        } else {
-          // Navigate to artisan profile setup
-          Navigator.pushReplacementNamed(
-            context,
-            '/artisan-setup',
-            arguments: {
-              'name': _nameController.text.trim(),
-              'phone': '+250${_phoneController.text.trim()}',
-              'email': _emailController.text.trim(),
-              'district': _selectedDistrict,
-            },
-          );
+        final userId = await SupabaseService.signUp(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+
+        await SupabaseService.createProfile(
+          id: userId,
+          name: _nameController.text.trim(),
+          phoneNumber: phone,
+          district: _selectedDistrict,
+          role: role,
+        );
+
+        if (mounted) {
+          // Covers A4 — if/else control flow
+          if (_selectedUserType == UserType.homeowner) {
+            UserSession.loginAsHomeowner(Homeowner(
+              id: userId,
+              name: _nameController.text.trim(),
+              phoneNumber: phone,
+              location: _districts[_selectedDistrict]!,
+              email: _emailController.text.trim(),
+              district: _selectedDistrict,
+              joinedAt: DateTime.now(),
+            ));
+            Navigator.pushReplacementNamed(context, '/home');
+          } else {
+            Navigator.pushReplacementNamed(
+              context,
+              '/artisan-setup',
+              arguments: {
+                'name': _nameController.text.trim(),
+                'phone': phone,
+                'email': _emailController.text.trim(),
+                'district': _selectedDistrict,
+                'userId': userId,
+              },
+            );
+          }
         }
+      } on AuthException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.message),
+            backgroundColor: AppTheme.error,
+          ));
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Signup failed. Please try again.'),
+            backgroundColor: AppTheme.error,
+          ));
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }

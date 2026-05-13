@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -32,13 +33,22 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     _controller.forward();
+    _navigateAfterSplash();
+  }
 
-    // Navigate to login after 3 seconds — covers B5 (Future)
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/login');
-      }
-    });
+  Future<void> _navigateAfterSplash() async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    final user = SupabaseService.currentUser;
+    if (user != null) {
+      await SupabaseService.loadUserSession();
+    }
+    if (mounted) {
+      Navigator.pushReplacementNamed(
+        context,
+        user != null ? '/home' : '/login',
+      );
+    }
   }
 
   @override

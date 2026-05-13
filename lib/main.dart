@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:quickfix/config/supabase_config.dart';
 import 'package:quickfix/l10n/app_localizations.dart';
 import 'package:quickfix/screens/artisan_detail_screen.dart';
 import 'package:quickfix/screens/artisan_setup_screen.dart';
@@ -13,7 +15,12 @@ import 'package:quickfix/screens/job_post_screen.dart';
 import 'package:quickfix/screens/artisan_edit_profile_screen.dart';
 import 'package:quickfix/screens/homeowner_edit_profile_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
   runApp(const QuickFixApp());
 }
 
