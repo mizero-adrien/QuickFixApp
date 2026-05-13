@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:quickfix/data/dummy_data.dart';
+import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class JobListScreen extends StatefulWidget {
@@ -29,9 +30,7 @@ class _JobListScreenState extends State<JobListScreen> {
   // Covers A2 — arrow function
   List<Job> get _filteredJobs => _selectedFilter == 'All'
       ? _jobs
-      : _jobs
-          .where((j) => j.categoryLabel == _selectedFilter)
-          .toList();
+      : _jobs.where((j) => j.categoryLabel == _selectedFilter).toList();
 
   @override
   void initState() {
@@ -41,11 +40,15 @@ class _JobListScreenState extends State<JobListScreen> {
 
   // Covers B5 — async/await
   Future<void> _loadJobs() async {
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() {
-      _jobs = dummyJobs;
-      _isLoading = false;
-    });
+    setState(() => _isLoading = true);
+    try {
+      final jobs = await SupabaseService.getOpenJobs();
+      setState(() => _jobs = jobs);
+    } catch (_) {
+      setState(() => _jobs = []);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   // Covers A4 — switch for status color
@@ -129,10 +132,9 @@ class _JobListScreenState extends State<JobListScreen> {
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
-                                        color:
-                                            _selectedFilter == entry.key
-                                                ? Colors.white
-                                                : AppTheme.textPrimary,
+                                        color: _selectedFilter == entry.key
+                                            ? Colors.white
+                                            : AppTheme.textPrimary,
                                       ),
                                     ),
                                   ],
@@ -191,6 +193,7 @@ class _JobListScreenState extends State<JobListScreen> {
                               return _JobCard(
                                 job: job,
                                 statusColor: _statusColor(job.status),
+                                onBidSubmitted: _loadJobs,
                               );
                             },
                           ),
@@ -206,10 +209,12 @@ class _JobListScreenState extends State<JobListScreen> {
 class _JobCard extends StatelessWidget {
   final Job job;
   final Color statusColor;
+  final VoidCallback onBidSubmitted;
 
   const _JobCard({
     required this.job,
     required this.statusColor,
+    required this.onBidSubmitted,
   });
 
   @override
@@ -225,12 +230,11 @@ class _JobCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Category badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha:0.08),
+                    color: AppTheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -242,12 +246,11 @@ class _JobCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Status badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha:0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -264,7 +267,6 @@ class _JobCard extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // Job title
             Text(
               job.title,
               style: const TextStyle(
@@ -276,7 +278,6 @@ class _JobCard extends StatelessWidget {
 
             const SizedBox(height: 6),
 
-            // Description
             Text(
               job.description,
               maxLines: 2,
@@ -290,7 +291,6 @@ class _JobCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Location and date row
             Row(
               children: [
                 const Icon(Icons.location_on_outlined,
@@ -322,11 +322,9 @@ class _JobCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Budget and bid button row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Budget
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -349,11 +347,8 @@ class _JobCard extends StatelessWidget {
                     ),
                   ],
                 ),
-
-                // Send bid button
                 ElevatedButton(
-                  onPressed: () =>
-                      _showBidDialog(context, job),
+                  onPressed: () => _showBidDialog(context, job),
                   style: ElevatedButton.styleFrom(
                     minimumSize: Size.zero,
                     padding: const EdgeInsets.symmetric(
@@ -382,119 +377,166 @@ class _JobCard extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Send Your Bid',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              job.title,
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 20),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          bool isSubmitting = false;
 
-            // Bid amount
-            const Text(
-              'Your Price (RWF)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: bidController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: 'e.g. 8000',
-                suffixText: 'RWF',
-                filled: true,
-                fillColor: AppTheme.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+          Future<void> submit() async {
+            final amountText = bidController.text.trim();
+            if (amountText.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please enter your bid amount'),
+                  backgroundColor: AppTheme.error,
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Note
-            const Text(
-              'Note to Homeowner',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: noteController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText:
-                    'Explain why you are the right person for this job...',
-                filled: true,
-                fillColor: AppTheme.background,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+              );
+              return;
+            }
+            final amount = int.tryParse(amountText);
+            if (amount == null || amount < 1000) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Minimum bid is 1,000 RWF'),
+                  backgroundColor: AppTheme.error,
                 ),
-              ),
-            ),
-            const SizedBox(height: 24),
+              );
+              return;
+            }
 
-            // Submit bid button
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
+            final artisanId = UserSession.currentArtisan?.id;
+            if (artisanId == null) return;
+
+            setModalState(() => isSubmitting = true);
+            try {
+              await SupabaseService.postBid(
+                jobId: job.id,
+                artisanId: artisanId,
+                amountRwf: amount,
+                note: noteController.text.trim(),
+              );
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text(
-                        '✅ Bid sent successfully!'),
+                    content: Text('Bid sent successfully!'),
                     backgroundColor: AppTheme.success,
                   ),
                 );
-              },
-              child: const Text(
-                'Submit Bid',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              }
+              onBidSubmitted();
+            } catch (e) {
+              setModalState(() => isSubmitting = false);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to send bid: $e'),
+                    backgroundColor: AppTheme.error,
+                  ),
+                );
+              }
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-          ],
-        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Send Your Bid',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  job.title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                const Text(
+                  'Your Price (RWF)',
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: bidController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 8000',
+                    suffixText: 'RWF',
+                    filled: true,
+                    fillColor: AppTheme.background,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text(
+                  'Note to Homeowner',
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: noteController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText:
+                        'Explain why you are the right person for this job...',
+                    filled: true,
+                    fillColor: AppTheme.background,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                isSubmitting
+                    ? const Center(child: CircularProgressIndicator())
+                    : ElevatedButton(
+                        onPressed: submit,
+                        child: const Text(
+                          'Submit Bid',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
