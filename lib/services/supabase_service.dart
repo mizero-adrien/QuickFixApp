@@ -1,3 +1,35 @@
+// SupabaseService — all available methods:
+//
+// Auth:
+//   signIn(email, password)            → String userId
+//   signUp(email, password, {name, phoneNumber, district, role}) → String userId
+//   logout()
+//   sendPasswordReset(email)
+//   loadUserSession()                  → sets UserSession from profiles table
+//
+// Profiles:
+//   createProfile({id, name, phoneNumber, district, role})
+//   getProfile(userId)                 → Map<String, dynamic>?
+//   updateProfile({id, name, phoneNumber, district})
+//   updateArtisanProfile({id, name, phoneNumber, district, trade, skills, yearsOfExperience, startingPrice, about})
+//
+// Artisans:
+//   createArtisanProfile({id, trade, skills, yearsOfExperience, startingPrice, about})
+//   getArtisans()                      → List<VerifiedArtisan>
+//
+// Jobs:
+//   postJob({homeownerId, title, description, location, category, budgetRwf})
+//   getOpenJobs()                      → List<Job>
+//   getJobsByHomeowner(homeownerId)    → List<Job>
+//
+// Bids:
+//   postBid({jobId, artisanId, amountRwf, note})
+//   getBidsByArtisan(artisanId)        → List<Bid>
+//
+// Reviews:
+//   getReviewsForArtisan(artisanId)   → List<Review>
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/bid.dart';
@@ -19,8 +51,29 @@ class SupabaseService {
     return res.user!.id;
   }
 
-  static Future<String> signUp(String email, String password) async {
-    final res = await _db.auth.signUp(email: email, password: password);
+  static Future<String> signUp(
+    String email,
+    String password, {
+    required String name,
+    required String phoneNumber,
+    required String district,
+    required String role,
+  }) async {
+    debugPrint('[SignUp] Attempting signup for $email as $role');
+    final res = await _db.auth.signUp(
+      email: email,
+      password: password,
+      data: {
+        'name': name,
+        'phone_number': phoneNumber,
+        'district': district,
+        'role': role,
+      },
+    );
+    if (res.user == null) {
+      throw Exception('Signup failed — no user returned');
+    }
+    debugPrint('[SignUp] Auth user created: ${res.user!.id}');
     return res.user!.id;
   }
 
@@ -42,13 +95,22 @@ class SupabaseService {
     required String district,
     required String role,
   }) async {
-    await _db.from('profiles').insert({
-      'id': id,
-      'name': name,
-      'phone_number': phoneNumber,
-      'district': district,
-      'role': role,
-    });
+    // Profile is created automatically via Supabase trigger.
+    // This upsert is a fallback in case the trigger didn't fire.
+    debugPrint('[Profile] Upserting profile for $id');
+    try {
+      await _db.from('profiles').upsert({
+        'id': id,
+        'name': name,
+        'phone_number': phoneNumber,
+        'district': district,
+        'role': role,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      debugPrint('[Profile] Profile upserted successfully');
+    } catch (e) {
+      debugPrint('[Profile] Upsert skipped (trigger may have handled it): $e');
+    }
   }
 
   static Future<Map<String, dynamic>?> getProfile(String userId) async {
@@ -72,7 +134,42 @@ class SupabaseService {
     }).eq('id', id);
   }
 
+  static Future<void> updateArtisanProfile({
+    required String id,
+    required String name,
+    required String phoneNumber,
+    required String district,
+    required String trade,
+    required List<String> skills,
+    required int yearsOfExperience,
+    required int startingPrice,
+    required String about,
+  }) async {
+    debugPrint('[SupabaseService] Updating artisan profile for $id');
+    await _db.from('profiles').update({
+      'name': name,
+      'phone_number': phoneNumber,
+      'district': district,
+    }).eq('id', id);
+    await _db.from('artisans').update({
+      'trade': trade,
+      'skills': skills,
+      'years_of_experience': yearsOfExperience,
+      'starting_price': startingPrice,
+      'about': about,
+    }).eq('id', id);
+    debugPrint('[SupabaseService] Artisan profile updated');
+  }
+
   // ── Artisans ──────────────────────────────────────────────────────────────
+
+  static Future<void> updateArtisanAvailability(
+      String id, bool isAvailable) async {
+    await _db
+        .from('artisans')
+        .update({'is_available': isAvailable})
+        .eq('id', id);
+  }
 
   static Future<void> createArtisanProfile({
     required String id,
@@ -119,6 +216,13 @@ class SupabaseService {
       'budget_rwf': budgetRwf,
       'status': 'requested',
     });
+  }
+
+  static Future<void> cancelJob(String jobId) async {
+    await _db
+        .from('jobs')
+        .update({'status': 'cancelled'})
+        .eq('id', jobId);
   }
 
   static Future<List<Job>> getOpenJobs() async {
@@ -179,17 +283,30 @@ class SupabaseService {
 
   static Future<void> loadUserSession() async {
     final user = currentUser;
+    debugPrint('[Session] currentUser: ${user?.id ?? 'null (not logged in)'}');
     if (user == null) return;
 
-    final profile = await getProfile(user.id);
-    if (profile == null) return;
+    debugPrint('[Session] Fetching profile for ${user.id}...');
+    Map<String, dynamic>? profile;
+    try {
+      profile = await getProfile(user.id);
+    } catch (e) {
+      debugPrint('[Session] getProfile threw: $e');
+      return;
+    }
 
-    final role = profile['role'] as String;
+    if (profile == null) {
+      debugPrint('[Session] Profile row not found — RLS may be blocking SELECT on profiles, or row does not exist');
+      return;
+    }
+
+    final role = profile['role'] as String? ?? '';
+    debugPrint('[Session] Profile found: name=${profile['name']}, role=$role');
 
     if (role == 'homeowner') {
       UserSession.loginAsHomeowner(Homeowner(
         id: user.id,
-        name: profile['name'] as String,
+        name: profile['name'] as String? ?? '',
         phoneNumber: profile['phone_number'] as String? ?? '',
         location: _districtLabel(profile['district'] as String? ?? 'gasabo'),
         email: user.email ?? '',
@@ -198,15 +315,32 @@ class SupabaseService {
             ? DateTime.parse(profile['created_at'] as String)
             : DateTime.now(),
       ));
+      debugPrint('[Session] Logged in as homeowner: ${profile['name']}');
     } else if (role == 'artisan') {
-      final artisanData = await _db
-          .from('artisans')
-          .select('*, profiles(*)')
-          .eq('id', user.id)
-          .maybeSingle();
+      debugPrint('[Session] Fetching artisan row for ${user.id}...');
+      Map<String, dynamic>? artisanData;
+      try {
+        artisanData = await _db
+            .from('artisans')
+            .select('*, profiles(*)')
+            .eq('id', user.id)
+            .maybeSingle();
+      } catch (e) {
+        debugPrint('[Session] artisans query threw: $e');
+        // RLS or missing row — still mark as artisan so they see the job list
+        UserSession.userType = UserType.artisan;
+        return;
+      }
+
       if (artisanData != null) {
         UserSession.loginAsArtisan(_toArtisan(artisanData));
+        debugPrint('[Session] Logged in as artisan: ${artisanData['trade']}');
+      } else {
+        debugPrint('[Session] Artisan row missing for ${user.id} — setting userType only');
+        UserSession.userType = UserType.artisan;
       }
+    } else {
+      debugPrint('[Session] Unknown role: $role');
     }
   }
 

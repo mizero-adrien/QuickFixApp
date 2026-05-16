@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class JobPostScreen extends StatefulWidget {
@@ -29,6 +31,16 @@ class _JobPostScreenState extends State<JobPostScreen> {
     ServiceCategory.masonry: '🧱 Masonry',
   };
 
+  // Clean category values stored in DB (no emoji, lowercase)
+  final Map<ServiceCategory, String> _categoryValues = {
+    ServiceCategory.plumbing: 'plumbing',
+    ServiceCategory.electrical: 'electrical',
+    ServiceCategory.painting: 'painting',
+    ServiceCategory.carpentry: 'carpentry',
+    ServiceCategory.cleaning: 'cleaning',
+    ServiceCategory.masonry: 'masonry',
+  };
+
   @override
   void dispose() {
     _titleController.dispose();
@@ -51,15 +63,44 @@ class _JobPostScreenState extends State<JobPostScreen> {
   }
 
   Future<void> _submitJob() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() => _isLoading = false);
+    if (!_formKey.currentState!.validate()) return;
 
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be logged in as a homeowner to post a job.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      debugPrint('[JobPost] Posting job to Supabase...');
+      await SupabaseService.postJob(
+        homeownerId: homeownerId,
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        location: _locationController.text.trim(),
+        category: _categoryValues[_selectedCategory!]!,
+        budgetRwf: int.tryParse(_budgetController.text.trim()),
+      );
+      debugPrint('[JobPost] Job posted successfully');
+      if (mounted) _showSuccessDialog();
+    } catch (e) {
+      debugPrint('[JobPost] Failed: $e');
       if (mounted) {
-        // Add job to dummy list
-        _showSuccessDialog();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to post job: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -102,8 +143,9 @@ class _JobPostScreenState extends State<JobPostScreen> {
         actions: [
           ElevatedButton(
             onPressed: () {
+              // Pop dialog then pop this screen back to home (home will reload jobs)
               Navigator.pop(context);
-              Navigator.pop(context);
+              Navigator.pop(context, true);
             },
             child: const Text('Back to Home'),
           ),
@@ -165,7 +207,7 @@ class _JobPostScreenState extends State<JobPostScreen> {
               _buildLabel('Service Type'),
               const SizedBox(height: 8),
               DropdownButtonFormField<ServiceCategory>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 decoration: InputDecoration(
                   hintText: 'Select a service category',
                   filled: true,

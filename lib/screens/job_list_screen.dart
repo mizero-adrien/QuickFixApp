@@ -42,10 +42,13 @@ class _JobListScreenState extends State<JobListScreen> {
   Future<void> _loadJobs() async {
     setState(() => _isLoading = true);
     try {
+      debugPrint('[JobList] Loading open jobs from Supabase...');
       final jobs = await SupabaseService.getOpenJobs();
-      setState(() => _jobs = jobs);
-    } catch (_) {
-      setState(() => _jobs = []);
+      debugPrint('[JobList] Loaded ${jobs.length} real jobs from Supabase');
+      if (mounted) setState(() => _jobs = jobs);
+    } catch (e) {
+      debugPrint('[JobList] Supabase error: $e');
+      if (mounted) setState(() => _jobs = []);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -73,134 +76,120 @@ class _JobListScreenState extends State<JobListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Available Jobs',
-          style: TextStyle(color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined,
-                color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadJobs,
-              child: Column(
-                children: [
-                  // Filter chips
-                  SizedBox(
-                    height: 56,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      children: _filters.entries
-                          .map(
-                            (entry) => GestureDetector(
-                              onTap: () => setState(
-                                  () => _selectedFilter = entry.key),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: _selectedFilter == entry.key
-                                      ? AppTheme.primary
-                                      : Colors.white,
-                                  borderRadius:
-                                      BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: _selectedFilter == entry.key
-                                        ? AppTheme.primary
-                                        : Colors.grey.shade300,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(entry.value,
-                                        style: const TextStyle(
-                                            fontSize: 14)),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      entry.key,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: _selectedFilter == entry.key
-                                            ? Colors.white
-                                            : AppTheme.textPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return RefreshIndicator(
+      onRefresh: _loadJobs,
+      child: Column(
+        children: [
+          // Filter chips
+          SizedBox(
+            height: 56,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
+              children: _filters.entries
+                  .map(
+                    (entry) => GestureDetector(
+                      onTap: () => setState(
+                          () => _selectedFilter = entry.key),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _selectedFilter == entry.key
+                              ? AppTheme.primary
+                              : Colors.white,
+                          borderRadius:
+                              BorderRadius.circular(24),
+                          border: Border.all(
+                            color: _selectedFilter == entry.key
+                                ? AppTheme.primary
+                                : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(entry.value,
+                                style: const TextStyle(
+                                    fontSize: 14)),
+                            const SizedBox(width: 6),
+                            Text(
+                              entry.key,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _selectedFilter == entry.key
+                                    ? Colors.white
+                                    : AppTheme.textPrimary,
                               ),
                             ),
-                          )
-                          .toList(),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  )
+                  .toList(),
+            ),
+          ),
 
-                  // Job count
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
-                    child: Row(
+          // Job count
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredJobs.length} jobs available',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Jobs list — covers C2 (ListView)
+          Expanded(
+            child: _filteredJobs.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        Text('📋',
+                            style: TextStyle(fontSize: 48)),
+                        SizedBox(height: 16),
                         Text(
-                          '${_filteredJobs.length} jobs available',
-                          style: const TextStyle(
-                            fontSize: 13,
+                          'No jobs available\nin this category',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
                             color: AppTheme.textSecondary,
                           ),
                         ),
                       ],
                     ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _filteredJobs.length,
+                    itemBuilder: (context, index) {
+                      // Covers A1 — final variable
+                      final job = _filteredJobs[index];
+                      return _JobCard(
+                        job: job,
+                        statusColor: _statusColor(job.status),
+                        onBidSubmitted: _loadJobs,
+                      );
+                    },
                   ),
-
-                  // Jobs list — covers C2 (ListView)
-                  Expanded(
-                    child: _filteredJobs.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text('📋',
-                                    style: TextStyle(fontSize: 48)),
-                                SizedBox(height: 16),
-                                Text(
-                                  'No jobs available\nin this category',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _filteredJobs.length,
-                            itemBuilder: (context, index) {
-                              // Covers A1 — final variable
-                              final job = _filteredJobs[index];
-                              return _JobCard(
-                                job: job,
-                                statusColor: _statusColor(job.status),
-                                onBidSubmitted: _loadJobs,
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
+          ),
+        ],
+      ),
     );
   }
 }

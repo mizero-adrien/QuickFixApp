@@ -1,7 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'package:quickfix/models/artisan.dart';
+import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class BookingFormScreen extends StatefulWidget {
@@ -60,15 +61,44 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
   // Form submission — covers B5 (async/await), D3
   Future<void> _submitForm(VerifiedArtisan artisan) async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isSubmitting = true);
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() => _isSubmitting = false);
+    if (!_formKey.currentState!.validate()) return;
 
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be logged in as a homeowner to book a service.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      debugPrint('[Booking] Posting job to Supabase...');
+      await SupabaseService.postJob(
+        homeownerId: homeownerId,
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        location: _locationController.text.trim(),
+        category: _categoryLabels[_selectedCategory!]!.toLowerCase(),
+        budgetRwf: int.tryParse(_budgetController.text.trim()),
+      );
+      debugPrint('[Booking] Job posted successfully');
+      if (mounted) _showSuccessDialog(artisan);
+    } catch (e) {
+      debugPrint('[Booking] Failed to post job: $e');
       if (mounted) {
-        _showSuccessDialog(artisan);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send request: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 

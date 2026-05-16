@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:quickfix/data/dummy_data.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/bid.dart';
@@ -30,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   String _searchCategory = 'All';
+  bool _isAvailable = true;
+  String _selectedBidFilter = 'All';
 
   // Covers A2 — arrow function
   List<VerifiedArtisan> get _filteredArtisans => _selectedCategory == 'All'
@@ -57,7 +60,14 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadArtisans();
+    if (UserSession.userType == UserType.artisan) {
+      _isLoading = false;
+      _isAvailable = UserSession.currentArtisan?.isAvailable ?? true;
+      _loadMyBids();
+    } else {
+      _loadArtisans();
+      _loadMyJobs();
+    }
   }
 
   @override
@@ -66,13 +76,38 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  static const Map<String, String> categoryIcons = {
+    'Plumbing': '🔧',
+    'Electrical': '⚡',
+    'Painting': '🎨',
+    'Carpentry': '🪚',
+    'Cleaning': '🧹',
+    'Masonry': '🧱',
+  };
+
   // Covers B5 — async/await Future
   Future<void> _loadArtisans() async {
-    final artisans = await fetchArtisans();
-    setState(() {
-      _artisans = artisans;
-      _isLoading = false;
-    });
+    if (UserSession.userType == UserType.artisan) {
+      debugPrint('[Home] Artisan user — skipping artisan list load');
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+    try {
+      debugPrint('[Home] Loading artisans from Supabase...');
+      final artisans = await SupabaseService.getArtisans();
+      if (artisans.isEmpty) {
+        debugPrint('[Home] Supabase returned empty list — using dummy artisans');
+        if (mounted) setState(() => _artisans = dummyArtisans);
+      } else {
+        debugPrint('[Home] Loaded ${artisans.length} artisans from Supabase');
+        if (mounted) setState(() => _artisans = artisans);
+      }
+    } catch (e) {
+      debugPrint('[Home] Supabase error — falling back to dummy artisans: $e');
+      if (mounted) setState(() => _artisans = dummyArtisans);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _loadMyBids() async {
@@ -91,34 +126,146 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadMyJobs() async {
     final homeownerId = UserSession.currentHomeowner?.id;
-    if (homeownerId == null) return;
+    if (homeownerId == null) {
+      debugPrint('[Home] _loadMyJobs: homeowner ID is null — skipping');
+      return;
+    }
     setState(() => _isLoadingJobs = true);
     try {
+      debugPrint('[Home] Loading jobs for homeowner $homeownerId...');
       final jobs = await SupabaseService.getJobsByHomeowner(homeownerId);
-      setState(() => _myJobs = jobs);
-    } catch (_) {
-      // show empty state on error
+      debugPrint('[Home] Loaded ${jobs.length} jobs for homeowner');
+      if (mounted) setState(() => _myJobs = jobs);
+    } catch (e) {
+      debugPrint('[Home] _loadMyJobs failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not load your jobs: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingJobs = false);
     }
   }
 
+  Future<void> _toggleAvailability(bool value) async {
+    setState(() => _isAvailable = value);
+    final artisan = UserSession.currentArtisan as VerifiedArtisan?;
+    if (artisan == null) return;
+    try {
+      await SupabaseService.updateArtisanAvailability(artisan.id, value);
+      UserSession.loginAsArtisan(VerifiedArtisan(
+        id: artisan.id,
+        name: artisan.name,
+        phoneNumber: artisan.phoneNumber,
+        location: artisan.location,
+        rating: artisan.rating,
+        totalReviews: artisan.totalReviews,
+        trade: artisan.trade,
+        skills: artisan.skills,
+        yearsOfExperience: artisan.yearsOfExperience,
+        completedJobs: artisan.completedJobs,
+        about: artisan.about,
+        startingPrice: artisan.startingPrice,
+        isAvailable: value,
+        verificationId: artisan.verificationId,
+        verifiedOn: artisan.verifiedOn,
+        profileImageUrl: artisan.profileImageUrl,
+      ));
+    } catch (e) {
+      debugPrint('[Home] Failed to toggle availability: $e');
+      if (mounted) setState(() => _isAvailable = !value);
+    }
+  }
+
+  // Artisan tab 0 — available jobs to bid on
+  Widget _buildArtisanJobsTab() => const JobListScreen();
+
   // Covers A4 — switch for bottom nav
   Widget _getBody() {
+    debugPrint('[Home] _getBody: userType=${UserSession.userType}, index=$_currentIndex');
     // Covers A4 — if/else based on user type
     if (UserSession.userType == UserType.artisan) {
       switch (_currentIndex) {
         case 0:
-          return const JobListScreen();
+          return _buildArtisanJobsTab();
         case 1:
-          return _buildArtisanBids();
+          return _buildArtisanBidsTab();
         case 2:
-          return _buildArtisanProfile();
+          return _buildArtisanProfileTab();
         case 3:
-          return _buildArtisanSettings();
+          return _buildArtisanSettingsTab();
         default:
-          return const JobListScreen();
+          return _buildArtisanJobsTab();
       }
+    }
+
+    // If userType is null the session load failed — offer retry before logout
+    if (UserSession.userType == null) {
+      debugPrint('[Home] userType is null — session not loaded');
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 64, color: AppTheme.textSecondary),
+              const SizedBox(height: 16),
+              const Text(
+                'Could not load your profile',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Check your internet connection and tap Retry.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  setState(() => _isLoading = true);
+                  await SupabaseService.loadUserSession();
+                  debugPrint('[Home] After retry: userType=${UserSession.userType}');
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                      if (UserSession.userType == UserType.artisan) {
+                        _isAvailable =
+                            UserSession.currentArtisan?.isAvailable ?? true;
+                        _loadMyBids();
+                      } else if (UserSession.userType == UserType.homeowner) {
+                        _loadArtisans();
+                        _loadMyJobs();
+                      }
+                    });
+                  }
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () async {
+                  await SupabaseService.logout();
+                  if (mounted) {
+                    Navigator.pushReplacementNamed(context, '/login');
+                  }
+                },
+                icon: const Icon(Icons.logout, color: AppTheme.error),
+                label: const Text('Log Out',
+                    style: TextStyle(color: AppTheme.error)),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     switch (_currentIndex) {
@@ -131,7 +278,6 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         return _buildProfileScreen(context);
       default:
-        // FIX 1: was _buildHomeownerHome() — missing required context argument
         return _buildHomeownerHome(context);
     }
   }
@@ -141,9 +287,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final localizations = AppLocalizations.of(context);
     // Covers A1 — final variable, null safety
     final isArtisan = UserSession.userType == UserType.artisan;
-    final userName = isArtisan
-        ? UserSession.currentArtisan?.name.split(' ').first ?? 'Artisan'
-        : UserSession.currentHomeowner?.name.split(' ').first ?? 'User';
 
     return Scaffold(
       appBar: AppBar(
@@ -192,7 +335,13 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: !isArtisan
           ? FloatingActionButton.extended(
               onPressed: () =>
-                  Navigator.pushNamed(context, '/post-job').then((_) => _loadMyJobs()),
+                  Navigator.pushNamed(context, '/post-job').then((posted) {
+                    _loadMyJobs();
+                    if (posted == true) {
+                      // Switch to My Jobs tab so user sees their new job immediately
+                      setState(() => _currentIndex = 2);
+                    }
+                  }),
               backgroundColor: AppTheme.secondary,
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text(
@@ -1001,6 +1150,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final activeJobs = _myJobs.where((j) =>
+        j.status != JobStatus.cancelled &&
+        j.status != JobStatus.completed).toList();
+    final pastJobs = _myJobs.where((j) =>
+        j.status == JobStatus.cancelled ||
+        j.status == JobStatus.completed).toList();
+
     if (_myJobs.isEmpty) {
       return Center(
         child: Column(
@@ -1019,8 +1175,19 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Tap "Post a Job" to get started',
+              'Tap the + button below to post your first job',
               style: TextStyle(color: AppTheme.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pushNamed(context, '/post-job')
+                  .then((posted) {
+                _loadMyJobs();
+                if (posted == true) setState(() => _currentIndex = 2);
+              }),
+              icon: const Icon(Icons.add),
+              label: const Text('Post a Job'),
             ),
           ],
         ),
@@ -1029,122 +1196,353 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadMyJobs,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        itemCount: _myJobs.length,
-        itemBuilder: (context, index) => _buildJobCard(_myJobs[index]),
+        children: [
+          if (activeJobs.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              child: Text(
+                'Active (${activeJobs.length})',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            ...activeJobs.map(_buildJobCard),
+          ],
+          if (pastJobs.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 10, top: 8),
+              child: Text(
+                'Past (${pastJobs.length})',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            ...pastJobs.map(_buildJobCard),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildJobCard(Job job) {
     final statusColor = _jobStatusColor(job.status);
+    final canCancel = job.status == JobStatus.requested || job.status == JobStatus.quoted;
+    final budget = job.budgetRwf?.toString().replaceAllMapped(
+        RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    job.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    job.statusLabel,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: statusColor,
-                    ),
-                  ),
-                ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header — status bar at top
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
-            const SizedBox(height: 8),
-            Row(
+            child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     job.categoryLabel,
                     style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primary),
                   ),
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.location_on_outlined,
-                    size: 14, color: AppTheme.textSecondary),
-                const SizedBox(width: 2),
-                Expanded(
-                  child: Text(
-                    job.location,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textSecondary),
-                    overflow: TextOverflow.ellipsis,
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.circle, size: 7, color: statusColor),
+                      const SizedBox(width: 5),
+                      Text(
+                        job.statusLabel,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: statusColor),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            if (job.budgetRwf != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.account_balance_wallet_outlined,
-                      size: 14, color: AppTheme.textSecondary),
-                  const SizedBox(width: 4),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  job.title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+
+                // Description
+                if (job.description.isNotEmpty) ...[
+                  const SizedBox(height: 6),
                   Text(
-                    'Budget: ${job.budgetRwf!.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')} RWF',
+                    job.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textSecondary),
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                        height: 1.5),
                   ),
                 ],
-              ),
-            ],
-            const SizedBox(height: 6),
-            Text(
-              'Posted ${_timeAgo(job.requestedAt)}',
-              style: const TextStyle(
-                  fontSize: 11, color: AppTheme.textSecondary),
+
+                const SizedBox(height: 12),
+
+                // Location + date row
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined,
+                        size: 14, color: AppTheme.textSecondary),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        job.location,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.access_time,
+                        size: 13, color: AppTheme.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      _timeAgo(job.requestedAt),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textSecondary),
+                    ),
+                  ],
+                ),
+
+                // Budget
+                if (budget != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.account_balance_wallet_outlined,
+                          size: 14, color: AppTheme.secondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Budget: $budget RWF',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+
+                // Action row
+                Row(
+                  children: [
+                    if (job.status == JobStatus.requested)
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.hourglass_empty,
+                                  size: 14, color: Colors.orange),
+                              SizedBox(width: 6),
+                              Text(
+                                'Awaiting bids',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (job.status == JobStatus.quoted)
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.gavel,
+                                  size: 14, color: AppTheme.primary),
+                              SizedBox(width: 6),
+                              Text(
+                                'Bids received',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.primary,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (job.status == JobStatus.completed)
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.success.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.check_circle_outline,
+                                  size: 14, color: AppTheme.success),
+                              SizedBox(width: 6),
+                              Text(
+                                'Completed',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.success,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (canCancel) ...[
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _confirmCancelJob(job),
+                        icon: const Icon(Icons.cancel_outlined,
+                            size: 14, color: AppTheme.error),
+                        label: const Text('Cancel',
+                            style: TextStyle(
+                                fontSize: 12, color: AppTheme.error)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          side: const BorderSide(color: AppTheme.error),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+
+  void _confirmCancelJob(Job job) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Cancel Job?'),
+        content: Text(
+          'Are you sure you want to cancel "${job.title}"? This cannot be undone.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep Job'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _cancelJob(job.id);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelJob(String jobId) async {
+    try {
+      await SupabaseService.cancelJob(jobId);
+      await _loadMyJobs();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Job cancelled.'),
+            backgroundColor: AppTheme.textSecondary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
   }
 
   Color _jobStatusColor(JobStatus status) {
@@ -1174,86 +1572,275 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'just now';
   }
 
-  // Homeowner profile screen
+  // Homeowner profile screen — full view
   Widget _buildProfileScreen(BuildContext context) {
     final homeowner = UserSession.currentHomeowner;
+    final email = SupabaseService.currentUser?.email ?? homeowner?.email ?? '—';
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 20),
-          CircleAvatar(
-            radius: 48,
-            backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-            child: Text(
-              homeowner?.name[0] ?? 'U',
-              style: const TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            homeowner?.name ?? 'User',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          Text(
-            homeowner?.email ?? '',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
+          // Gradient header
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.primary, AppTheme.primaryDark],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
-            child: Text(
-              homeowner?.districtLabel ?? 'Kigali',
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.primary,
-                fontWeight: FontWeight.w600,
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 52,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  child: Text(
+                    homeowner?.name.isNotEmpty == true
+                        ? homeowner!.name[0]
+                        : 'U',
+                    style: const TextStyle(
+                      fontSize: 44,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  homeowner?.name ?? 'Homeowner',
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  email,
+                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on_outlined,
+                          size: 14, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        homeowner?.districtLabel ?? 'Kigali, Rwanda',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Stats row
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem(
+                  '${_myJobs.length}',
+                  'Jobs Posted',
+                  AppTheme.primary,
+                ),
+                _buildStatItem(
+                  '${_myJobs.where((j) => j.status == JobStatus.completed).length}',
+                  'Completed',
+                  AppTheme.success,
+                ),
+                _buildStatItem(
+                  homeowner?.district.isNotEmpty == true
+                      ? homeowner!.district[0].toUpperCase() +
+                          homeowner.district.substring(1)
+                      : 'Kigali',
+                  'District',
+                  AppTheme.secondary,
+                ),
+              ],
+            ),
+          ),
+
+          // Account section
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: _buildSettingsSection(
+              title: 'Account',
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.person_outline,
+                  title: homeowner?.name ?? 'User',
+                  subtitle: 'Full name',
+                ),
+                _buildSettingsDivider(),
+                _buildSettingsTile(
+                  icon: Icons.email_outlined,
+                  title: email,
+                  subtitle: 'Email address',
+                ),
+                _buildSettingsDivider(),
+                _buildSettingsTile(
+                  icon: Icons.phone_outlined,
+                  title: (homeowner?.phoneNumber ?? '').isNotEmpty
+                      ? homeowner!.phoneNumber
+                      : 'Not set',
+                  subtitle: 'Phone number',
+                ),
+              ],
+            ),
+          ),
+
+          // My Jobs quick link
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _buildSettingsSection(
+              title: 'Activity',
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.work_outline,
+                  title: 'My Jobs',
+                  subtitle: 'View all jobs you have posted',
+                  onTap: () => setState(() => _currentIndex = 2),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSecondary),
+                ),
+                _buildSettingsDivider(),
+                _buildSettingsTile(
+                  icon: Icons.edit_outlined,
+                  title: 'Edit Profile',
+                  subtitle: 'Update your name and location',
+                  onTap: () =>
+                      Navigator.pushNamed(context, '/homeowner-edit-profile'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+
+          // Language preference
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _buildSettingsSection(
+              title: 'Preferences',
+              children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.language,
+                            color: AppTheme.primary, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Language',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary)),
+                            Text('App display language',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                      ),
+                      const LanguageSelector(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Support
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: _buildSettingsSection(
+              title: 'Support',
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.help_outline,
+                  title: 'Help & Support',
+                  subtitle: 'FAQs, contact us',
+                  onTap: () {},
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSecondary),
+                ),
+                _buildSettingsDivider(),
+                _buildSettingsTile(
+                  icon: Icons.info_outline,
+                  title: 'About QuickFix',
+                  subtitle: 'Version 1.0.0',
+                ),
+              ],
+            ),
+          ),
+
+          // Logout
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                final nav = Navigator.of(context);
+                await SupabaseService.logout();
+                if (mounted) nav.pushReplacementNamed('/login');
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Log Out',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.error,
+                minimumSize: const Size(double.infinity, 52),
               ),
             ),
           ),
-          const SizedBox(height: 32),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.pushNamed(
-              context,
-              '/homeowner-edit-profile',
-            ),
-            icon: const Icon(Icons.edit_outlined,
-                color: AppTheme.primary),
-            label: const Text(
-              'Edit Profile',
-              style: TextStyle(color: AppTheme.primary),
-            ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () {
-              UserSession.logout();
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            icon: const Icon(Icons.logout, color: AppTheme.error),
-            label: const Text(
-              'Logout',
-              style: TextStyle(color: AppTheme.error),
-            ),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(200, 48),
-              side: const BorderSide(color: AppTheme.error),
+
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 32),
+            child: Center(
+              child: Text(
+                'QuickFix • Rwanda Artisan Platform',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
             ),
           ),
         ],
@@ -1261,46 +1848,112 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Artisan placeholder screens
-  Widget _buildArtisanBids() {
+  // Artisan tab 1 — my bids with status filter
+  Widget _buildArtisanBidsTab() {
     if (_isLoadingBids) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_myBids.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.gavel_outlined,
-                size: 72, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            const Text(
-              'No bids yet',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+    final filters = ['All', 'Pending', 'Accepted', 'Rejected'];
+    final filtered = _selectedBidFilter == 'All'
+        ? _myBids
+        : _myBids.where((b) => b.statusLabel == _selectedBidFilter).toList();
+
+    return Column(
+      children: [
+        // Stats summary
+        Container(
+          color: AppTheme.primary,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Row(
+            children: [
+              _buildMiniStat('${_myBids.length}', 'Total Bids', Colors.white),
+              _buildMiniStat(
+                '${_myBids.where((b) => b.status == BidStatus.accepted).length}',
+                'Accepted',
+                Colors.greenAccent,
+              ),
+              _buildMiniStat(
+                '${_myBids.where((b) => b.status == BidStatus.pending).length}',
+                'Pending',
+                Colors.orangeAccent,
+              ),
+            ],
+          ),
+        ),
+
+        // Filter chips
+        SizedBox(
+          height: 52,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            children: filters.map((f) {
+              final selected = _selectedBidFilter == f;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedBidFilter = f),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: selected ? AppTheme.primary : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: selected ? AppTheme.primary : Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Text(
+                    f,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        if (filtered.isEmpty)
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.gavel_outlined, size: 72, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  Text(
+                    _myBids.isEmpty ? 'No bids yet' : 'No $_selectedBidFilter bids',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Browse the Jobs tab and send your first bid',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Browse available jobs and send your first bid',
-              style: TextStyle(color: AppTheme.textSecondary),
-              textAlign: TextAlign.center,
+          )
+        else
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadMyBids,
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                itemCount: filtered.length,
+                itemBuilder: (context, index) => _buildBidCard(filtered[index]),
+              ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadMyBids,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        itemCount: _myBids.length,
-        itemBuilder: (context, index) => _buildBidCard(_myBids[index]),
-      ),
+          ),
+      ],
     );
   }
 
@@ -1440,68 +2093,358 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildArtisanProfile() {
-    final artisan = UserSession.currentArtisan;
+  // Artisan tab 2 — full profile view
+  Widget _buildArtisanProfileTab() {
+    final artisan = UserSession.currentArtisan as VerifiedArtisan?;
+
+    if (artisan == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off_outlined, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text('Profile not loaded',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            const SizedBox(height: 8),
+            const Text('Please log out and log in again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await SupabaseService.logout();
+                if (mounted) Navigator.pushReplacementNamed(context, '/login');
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Log Out'),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            ),
+          ],
+        ),
+      );
+    }
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 20),
-          CircleAvatar(
-            radius: 48,
-            backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+          // Gradient header
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.primary, AppTheme.primaryDark],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+            child: Column(
+              children: [
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 52,
+                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                      child: Text(
+                        artisan.name.isNotEmpty ? artisan.name[0] : 'A',
+                        style: const TextStyle(
+                          fontSize: 44,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: _isAvailable ? AppTheme.success : Colors.grey,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(artisan.name,
+                    style: const TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 4),
+                Text(artisan.trade,
+                    style: const TextStyle(fontSize: 15, color: Colors.white70)),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 14, color: Colors.white70),
+                    const SizedBox(width: 4),
+                    Text(artisan.location,
+                        style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _isAvailable
+                        ? AppTheme.success.withValues(alpha: 0.25)
+                        : Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _isAvailable ? AppTheme.success : Colors.white30,
+                    ),
+                  ),
+                  child: Text(
+                    _isAvailable ? '● Available for Jobs' : '● Currently Unavailable',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _isAvailable ? AppTheme.success : Colors.white60,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Availability toggle
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (_isAvailable ? AppTheme.success : Colors.grey)
+                        .withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isAvailable ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                    color: _isAvailable ? AppTheme.success : Colors.grey,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Availability',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textPrimary)),
+                      Text(
+                        _isAvailable
+                            ? 'Visible to homeowners'
+                            : 'Hidden from homeowners',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _isAvailable,
+                  onChanged: _toggleAvailability,
+                  activeThumbColor: AppTheme.success,
+                ),
+              ],
+            ),
+          ),
+
+          // Stats row
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem('${artisan.rating}★', 'Rating', AppTheme.secondary),
+                _buildStatItem('${artisan.completedJobs}', 'Jobs Done', AppTheme.primary),
+                _buildStatItem('${artisan.yearsOfExperience}y', 'Experience', AppTheme.success),
+                _buildStatItem('${artisan.totalReviews}', 'Reviews', Colors.purple),
+              ],
+            ),
+          ),
+
+          // Skills
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: Text('Skills',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: artisan.skills
+                  .map(
+                    (s) => Chip(
+                      label: Text(s,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppTheme.primary)),
+                      backgroundColor: AppTheme.primary.withValues(alpha: 0.08),
+                      side: BorderSide(
+                          color: AppTheme.primary.withValues(alpha: 0.3)),
+                      padding: EdgeInsets.zero,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+
+          // About
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: Text('About',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              artisan?.name[0] ?? 'A',
+              artisan.about.isNotEmpty
+                  ? artisan.about
+                  : 'No description yet. Tap Edit Profile to add one.',
               style: const TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primary,
+                  fontSize: 14, color: AppTheme.textSecondary, height: 1.6),
+            ),
+          ),
+
+          // Verification badge
+          if (artisan.isRecentlyVerified)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppTheme.success.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, color: AppTheme.success, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Verified artisan — ID: ${artisan.verificationId}',
+                      style: const TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.success,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Starting price
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppTheme.secondary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: AppTheme.secondary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined,
+                    color: AppTheme.secondary, size: 20),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Starting Price',
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary)),
+                    Text(
+                      '${artisan.startingPrice.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')} RWF',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.secondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Action buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: ElevatedButton.icon(
+              onPressed: () =>
+                  Navigator.pushNamed(context, '/artisan-edit-profile')
+                      .then((_) => setState(() {
+                            _isAvailable =
+                                UserSession.currentArtisan?.isAvailable ?? true;
+                          })),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit Profile',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            artisan?.name ?? 'Artisan',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          Text(
-            artisan?.trade ?? '',
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 32),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.pushNamed(
-              context,
-              '/artisan-edit-profile',
-            ),
-            icon: const Icon(Icons.edit_outlined,
-                color: AppTheme.primary),
-            label: const Text(
-              'Edit Profile',
-              style: TextStyle(color: AppTheme.primary),
-            ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () {
-              UserSession.logout();
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            icon: const Icon(Icons.logout, color: AppTheme.error),
-            label: const Text(
-              'Logout',
-              style: TextStyle(color: AppTheme.error),
-            ),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(200, 48),
-              side: const BorderSide(color: AppTheme.error),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await SupabaseService.logout();
+                if (mounted) Navigator.pushReplacementNamed(context, '/login');
+              },
+              icon: const Icon(Icons.logout, color: AppTheme.error),
+              label: const Text('Log Out',
+                  style: TextStyle(
+                      color: AppTheme.error,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                side: const BorderSide(color: AppTheme.error),
+              ),
             ),
           ),
         ],
@@ -1509,28 +2452,327 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildArtisanSettings() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text('⚙️', style: TextStyle(fontSize: 48)),
-          SizedBox(height: 16),
-          Text(
-            'Settings',
-            style: TextStyle(
-              fontSize: 18,
+  // Artisan tab 3 — settings and account info
+  Widget _buildArtisanSettingsTab() {
+    final artisan = UserSession.currentArtisan as VerifiedArtisan?;
+    final email = SupabaseService.currentUser?.email ?? '—';
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      children: [
+        // Account section
+        _buildSettingsSection(
+          title: 'Account',
+          children: [
+            _buildSettingsTile(
+              icon: Icons.person_outline,
+              title: artisan?.name ?? 'Artisan',
+              subtitle: artisan?.trade ?? 'Trade not set',
+            ),
+            _buildSettingsDivider(),
+            _buildSettingsTile(
+              icon: Icons.email_outlined,
+              title: email,
+              subtitle: 'Email address',
+            ),
+            _buildSettingsDivider(),
+            _buildSettingsTile(
+              icon: Icons.phone_outlined,
+              title: artisan?.phoneNumber ?? '—',
+              subtitle: 'Phone number',
+            ),
+            _buildSettingsDivider(),
+            _buildSettingsTile(
+              icon: Icons.location_on_outlined,
+              title: artisan?.location ?? '—',
+              subtitle: 'Location',
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Availability section
+        _buildSettingsSection(
+          title: 'Status',
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: (_isAvailable ? AppTheme.success : Colors.grey)
+                          .withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isAvailable
+                          ? Icons.wifi_tethering
+                          : Icons.wifi_tethering_off,
+                      color: _isAvailable ? AppTheme.success : Colors.grey,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Available for Jobs',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary)),
+                        Text(
+                          _isAvailable
+                              ? 'Homeowners can find you'
+                              : 'You are hidden from search',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _isAvailable,
+                    onChanged: _toggleAvailability,
+                    activeThumbColor: AppTheme.success,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Profile actions
+        _buildSettingsSection(
+          title: 'Profile',
+          children: [
+            _buildSettingsTile(
+              icon: Icons.edit_outlined,
+              title: 'Edit Profile',
+              subtitle: 'Update your name, trade, skills and pricing',
+              onTap: () => Navigator.pushNamed(context, '/artisan-edit-profile')
+                  .then((_) => setState(
+                      () => _isAvailable =
+                          UserSession.currentArtisan?.isAvailable ?? true)),
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Language
+        _buildSettingsSection(
+          title: 'Preferences',
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.language,
+                        color: AppTheme.primary, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Language',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary)),
+                        Text('App display language',
+                            style: TextStyle(
+                                fontSize: 12, color: AppTheme.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  const LanguageSelector(),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // Support
+        _buildSettingsSection(
+          title: 'Support',
+          children: [
+            _buildSettingsTile(
+              icon: Icons.help_outline,
+              title: 'Help & Support',
+              subtitle: 'FAQs, contact us',
+              onTap: () {},
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppTheme.textSecondary),
+            ),
+            _buildSettingsDivider(),
+            _buildSettingsTile(
+              icon: Icons.star_outline,
+              title: 'Rate QuickFix',
+              subtitle: 'Share your experience',
+              onTap: () {},
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppTheme.textSecondary),
+            ),
+            _buildSettingsDivider(),
+            _buildSettingsTile(
+              icon: Icons.info_outline,
+              title: 'About QuickFix',
+              subtitle: 'Version 1.0.0',
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Logout
+        ElevatedButton.icon(
+          onPressed: () async {
+            await SupabaseService.logout();
+            if (mounted) Navigator.pushReplacementNamed(context, '/login');
+          },
+          icon: const Icon(Icons.logout),
+          label: const Text('Log Out',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.error,
+            minimumSize: const Size(double.infinity, 52),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+        const Center(
+          child: Text(
+            'QuickFix • Rwanda Artisan Platform',
+            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Settings section card builder
+  Widget _buildSettingsSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+              color: AppTheme.textSecondary,
+              letterSpacing: 0.8,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
-            'Settings coming soon',
-            style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    VoidCallback? onTap,
+    Widget? trailing,
+  }) {
+    return ListTile(
+      onTap: onTap,
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.08),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: AppTheme.primary, size: 20),
+      ),
+      title: Text(title,
+          style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary)),
+      subtitle: subtitle != null
+          ? Text(subtitle,
+              style: const TextStyle(
+                  fontSize: 12, color: AppTheme.textSecondary))
+          : null,
+      trailing: trailing,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    );
+  }
+
+  Widget _buildSettingsDivider() => const Divider(
+        height: 1,
+        indent: 56,
+        endIndent: 0,
+        color: Color(0xFFF0F0F0),
+      );
+
+  // Mini stat for bid summary bar
+  Widget _buildMiniStat(String value, String label, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(value,
+              style: TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Colors.white70)),
         ],
       ),
+    );
+  }
+
+  // Shared stat item for profile tabs
+  Widget _buildStatItem(String value, String label, Color color) {
+    return Column(
+      children: [
+        Text(value,
+            style: TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        const SizedBox(height: 4),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, color: AppTheme.textSecondary)),
+      ],
     );
   }
 }

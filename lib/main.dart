@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quickfix/config/supabase_config.dart';
+import 'package:quickfix/models/homeowner.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/l10n/app_localizations.dart';
 import 'package:quickfix/screens/artisan_detail_screen.dart';
 import 'package:quickfix/screens/artisan_setup_screen.dart';
@@ -21,6 +23,9 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
+  // Restore session before first frame so screens see correct UserSession
+  await SupabaseService.loadUserSession();
+  debugPrint('[Main] Session restore complete. UserType: ${UserSession.userType}');
   runApp(const QuickFixApp());
 }
 

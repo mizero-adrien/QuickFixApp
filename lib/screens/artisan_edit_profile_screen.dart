@@ -1,7 +1,7 @@
-
 import 'package:flutter/material.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/homeowner.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class ArtisanEditProfileScreen extends StatefulWidget {
@@ -101,6 +101,13 @@ class _ArtisanEditProfileScreenState
     _selectedLocation = _normalizeLocation(artisan?.location);
   }
 
+  String _districtFromLocation(String location) {
+    if (location.toLowerCase().contains('gasabo')) return 'gasabo';
+    if (location.toLowerCase().contains('kicukiro')) return 'kicukiro';
+    if (location.toLowerCase().contains('nyarugenge')) return 'nyarugenge';
+    return 'gasabo';
+  }
+
   String _normalizeLocation(String? location) {
     if (location == null || location.isEmpty) {
       return _locations.first;
@@ -140,61 +147,87 @@ class _ArtisanEditProfileScreenState
 
   // Covers B5 — async/await
   Future<void> _saveProfile() async {
-    if (_formKey.currentState!.validate()) {
-      if (_selectedSkills.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select at least one skill'),
-            backgroundColor: AppTheme.error,
-          ),
-        );
-        return;
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedSkills.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one skill'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final currentArtisan = UserSession.currentArtisan as VerifiedArtisan?;
+      if (currentArtisan == null) {
+        throw Exception('Session expired — please log in again.');
       }
 
-      setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() => _isLoading = false);
+      final name = _nameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final district = _districtFromLocation(_selectedLocation);
+      final yearsOfExperience =
+          int.tryParse(_experienceController.text.trim()) ??
+              currentArtisan.yearsOfExperience;
+      final startingPrice =
+          int.tryParse(_priceController.text.trim()) ??
+              currentArtisan.startingPrice;
+
+      await SupabaseService.updateArtisanProfile(
+        id: currentArtisan.id,
+        name: name,
+        phoneNumber: phone,
+        district: district,
+        trade: _selectedTrade,
+        skills: _selectedSkills.toList(),
+        yearsOfExperience: yearsOfExperience,
+        startingPrice: startingPrice,
+        about: _aboutController.text.trim(),
+      );
+
+      // Update local session so UI reflects changes immediately
+      UserSession.loginAsArtisan(VerifiedArtisan(
+        id: currentArtisan.id,
+        name: name,
+        phoneNumber: phone,
+        location: _selectedLocation,
+        rating: currentArtisan.rating,
+        totalReviews: currentArtisan.totalReviews,
+        trade: _selectedTrade,
+        skills: _selectedSkills.toList(),
+        yearsOfExperience: yearsOfExperience,
+        completedJobs: currentArtisan.completedJobs,
+        about: _aboutController.text.trim(),
+        startingPrice: startingPrice,
+        isAvailable: currentArtisan.isAvailable,
+        verificationId: currentArtisan.verificationId,
+        verifiedOn: currentArtisan.verifiedOn,
+        profileImageUrl: currentArtisan.profileImageUrl,
+      ));
 
       if (mounted) {
-        // Update current artisan session
-        final currentArtisan = UserSession.currentArtisan as VerifiedArtisan?;
-        if (currentArtisan != null) {
-          final updatedArtisan = VerifiedArtisan(
-            id: currentArtisan.id,
-            name: _nameController.text.trim(),
-            phoneNumber: _phoneController.text.trim(),
-            location: _selectedLocation,
-            rating: currentArtisan.rating,
-            totalReviews: currentArtisan.totalReviews,
-            trade: _selectedTrade,
-            skills: _selectedSkills.toList(),
-            yearsOfExperience:
-                int.tryParse(_experienceController.text.trim()) ??
-                    currentArtisan.yearsOfExperience,
-            completedJobs: currentArtisan.completedJobs,
-            about: _aboutController.text.trim(),
-            startingPrice:
-                int.tryParse(_priceController.text.trim()) ??
-                    currentArtisan.startingPrice,
-            isAvailable: currentArtisan.isAvailable,
-            verificationId: currentArtisan.verificationId,
-            verifiedOn: currentArtisan.verifiedOn,
-            profileImageUrl: currentArtisan.profileImageUrl,
-          );
-
-          UserSession.loginAsArtisan(updatedArtisan);
-        }
-
-        // Show success
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Profile updated successfully!'),
+            content: Text('Profile updated successfully!'),
             backgroundColor: AppTheme.success,
           ),
         );
-
         Navigator.pop(context);
       }
+    } catch (e) {
+      debugPrint('[ArtisanEdit] Save failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

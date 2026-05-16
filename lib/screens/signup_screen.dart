@@ -25,6 +25,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  String? _errorMessage;
 
   // Covers A3 — Map
   final Map<String, String> _districts = {
@@ -43,8 +44,32 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
+  String _friendlyError(String raw) {
+    final msg = raw.toLowerCase();
+    if (msg.contains('user already registered') || msg.contains('already registered') || msg.contains('already exists')) {
+      return 'An account with this email already exists. Try signing in instead.';
+    }
+    if (msg.contains('invalid email') || msg.contains('unable to validate email') || msg.contains('invalid format')) {
+      return 'This email address doesn\'t look right. Please check it again.';
+    }
+    if (msg.contains('password should be') || msg.contains('password must be')) {
+      return 'Password is too weak. Please use at least 6 characters.';
+    }
+    if (msg.contains('email rate limit') || msg.contains('rate limit')) {
+      return 'Too many sign-up attempts. Please wait a few minutes and try again.';
+    }
+    if (msg.contains('signup') && msg.contains('disabled')) {
+      return 'Sign-ups are temporarily disabled. Please try again later.';
+    }
+    if (msg.contains('network') || msg.contains('socket') || msg.contains('connection')) {
+      return 'Connection problem. Please check your internet and try again.';
+    }
+    return 'Error: $raw'; // TODO: remove after debugging
+  }
+
   // Covers B5 — async/await network calls via Supabase
   Future<void> _signup() async {
+    setState(() => _errorMessage = null);
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
@@ -53,11 +78,17 @@ class _SignupScreenState extends State<SignupScreen> {
             ? 'homeowner'
             : 'artisan';
 
+        // Pass all data as metadata so trigger creates profile automatically
         final userId = await SupabaseService.signUp(
           _emailController.text.trim(),
           _passwordController.text,
+          name: _nameController.text.trim(),
+          phoneNumber: phone,
+          district: _selectedDistrict,
+          role: role,
         );
 
+        // Fallback: manually upsert profile in case trigger didn't fire
         await SupabaseService.createProfile(
           id: userId,
           name: _nameController.text.trim(),
@@ -94,19 +125,11 @@ class _SignupScreenState extends State<SignupScreen> {
           }
         }
       } on AuthException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.message),
-            backgroundColor: AppTheme.error,
-          ));
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Signup failed. Please try again.'),
-            backgroundColor: AppTheme.error,
-          ));
-        }
+        debugPrint('[Signup] AuthException: ${e.message}');
+        if (mounted) setState(() => _errorMessage = _friendlyError(e.message));
+      } catch (e) {
+        debugPrint('[Signup] Exception: $e');
+        if (mounted) setState(() => _errorMessage = e.toString());
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -425,6 +448,43 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
 
               const SizedBox(height: 32),
+
+              // ── Inline error banner ──────────────────────────────────────────
+              if (_errorMessage != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.error.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.error.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: AppTheme.error, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: AppTheme.error,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => setState(() => _errorMessage = null),
+                        child: const Icon(Icons.close,
+                            color: AppTheme.error, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Signup button
               _isLoading

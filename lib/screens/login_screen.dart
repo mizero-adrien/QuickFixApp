@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
@@ -18,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // Covers A1 — explicitly typed variables
   bool _isLoading = false;
   bool _obscurePassword = true;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -229,31 +231,49 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  String _friendlyError(String raw) {
+    final msg = raw.toLowerCase();
+    if (msg.contains('invalid login credentials') || msg.contains('invalid_credentials')) {
+      return 'Incorrect email or password. Please double-check and try again.';
+    }
+    if (msg.contains('email not confirmed') || msg.contains('email_not_confirmed')) {
+      return 'Your email isn\'t verified yet. Please check your inbox for a confirmation link.';
+    }
+    if (msg.contains('too many requests') || msg.contains('rate limit')) {
+      return 'Too many login attempts. Please wait a few minutes and try again.';
+    }
+    if (msg.contains('user not found') || msg.contains('no user')) {
+      return 'No account found with this email. Please sign up first.';
+    }
+    if (msg.contains('network') || msg.contains('socket') || msg.contains('connection')) {
+      return 'Connection problem. Please check your internet and try again.';
+    }
+    return 'Error: $raw'; // TODO: remove after debugging
+  }
+
   // Covers B5 — async/await network call via Supabase
   Future<void> _login() async {
+    setState(() => _errorMessage = null);
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
       try {
+        debugPrint('[Login] Signing in...');
         await SupabaseService.signIn(
           _emailController.text.trim(),
           _passwordController.text,
         );
+        debugPrint('[Login] Auth sign in successful — loading session...');
+
         await SupabaseService.loadUserSession();
+        debugPrint('[Login] Session loaded. Role: ${UserSession.userType}');
+
         if (mounted) Navigator.pushReplacementNamed(context, '/home');
       } on AuthException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(e.message),
-            backgroundColor: AppTheme.error,
-          ));
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('An error occurred. Please try again.'),
-            backgroundColor: AppTheme.error,
-          ));
-        }
+        debugPrint('[Login] AuthException: ${e.message}');
+        if (mounted) setState(() => _errorMessage = _friendlyError(e.message));
+      } catch (e) {
+        debugPrint('[Login] Exception: $e');
+        if (mounted) setState(() => _errorMessage = e.toString());
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
@@ -368,6 +388,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
+                      onChanged: (_) => setState(() => _errorMessage = null),
                       decoration: const InputDecoration(
                         hintText: 'e.g. jean@gmail.com',
                         prefixIcon: Icon(Icons.email_outlined),
@@ -403,6 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
+                      onChanged: (_) => setState(() => _errorMessage = null),
                       decoration: InputDecoration(
                         hintText: 'Enter your password',
                         prefixIcon: const Icon(Icons.lock_outlined),
@@ -450,6 +472,44 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
 
                     const SizedBox(height: 24),
+
+                    // ── Inline error banner ────────────────────────────────────
+                    if (_errorMessage != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppTheme.error.withValues(alpha: 0.35)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                color: AppTheme.error, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(
+                                  color: AppTheme.error,
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () =>
+                                  setState(() => _errorMessage = null),
+                              child: const Icon(Icons.close,
+                                  color: AppTheme.error, size: 18),
+                            ),
+                          ],
+                        ),
+                      ),
 
                     // ── Sign In button — full width, dark blue, rounded ────────
                     _isLoading
