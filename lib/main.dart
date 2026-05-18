@@ -19,6 +19,10 @@ import 'package:quickfix/screens/artisan_edit_profile_screen.dart';
 import 'package:quickfix/screens/homeowner_edit_profile_screen.dart';
 import 'package:quickfix/screens/notifications_screen.dart';
 import 'package:quickfix/screens/bids_management_screen.dart';
+import 'package:quickfix/screens/job_status_screen.dart';
+import 'package:quickfix/screens/job_detail_screen.dart';
+import 'package:quickfix/screens/conversations_screen.dart';
+import 'package:quickfix/screens/chat_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -83,6 +87,9 @@ class QuickFixApp extends StatelessWidget {
               '/homeowner-edit-profile': (context) => const HomeownerEditProfileScreen(),
               '/notifications': (context) => const NotificationsScreen(),
               '/bids-management': (context) => const BidsManagementScreen(),
+              '/job-status': (context) => const JobStatusScreen(),
+              '/job-detail': (context) => const JobDetailScreen(),
+              '/chat': (context) => const ChatScreen(),
             },
           ),
         );

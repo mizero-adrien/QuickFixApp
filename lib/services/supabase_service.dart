@@ -36,6 +36,7 @@ import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/bid.dart';
 import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
+import 'package:quickfix/models/message.dart';
 import 'package:quickfix/models/review.dart';
 
 class SupabaseService {
@@ -223,6 +224,20 @@ class SupabaseService {
     return url;
   }
 
+  static Future<String> uploadJobPhoto(
+      String pathKey, Uint8List bytes) async {
+    final path = '$pathKey.jpg';
+    await _db.storage.from('job-photos').uploadBinary(
+      path,
+      bytes,
+      fileOptions: const FileOptions(
+        contentType: 'image/jpeg',
+        upsert: true,
+      ),
+    );
+    return _db.storage.from('job-photos').getPublicUrl(path);
+  }
+
   // ── Artisans ──────────────────────────────────────────────────────────────
 
   static Future<void> updateArtisanAvailability(
@@ -240,6 +255,7 @@ class SupabaseService {
     required int yearsOfExperience,
     required int startingPrice,
     required String about,
+    String? avatarUrl,
   }) async {
     await _db.from('artisans').insert({
       'id': id,
@@ -249,6 +265,17 @@ class SupabaseService {
       'starting_price': startingPrice,
       'about': about,
     });
+    if (avatarUrl != null) {
+      await _db.from('profiles').update({'avatar_url': avatarUrl}).eq('id', id);
+    }
+  }
+
+  static Future<Set<String>> getArtisanBidJobIds(String artisanId) async {
+    final data = await _db
+        .from('bids')
+        .select('job_id')
+        .eq('artisan_id', artisanId);
+    return data.map<String>((b) => b['job_id'] as String).toSet();
   }
 
   static Future<List<VerifiedArtisan>> getArtisans() async {
@@ -270,6 +297,7 @@ class SupabaseService {
     int? budgetRwf,
     String? assignedArtisanId,
     String? assignedArtisanName,
+    String? photoUrl,
   }) async {
     final isDirect = assignedArtisanId != null;
     final row = await _db.from('jobs').insert({
@@ -281,6 +309,7 @@ class SupabaseService {
       'budget_rwf': budgetRwf,
       'status': 'requested',
       if (isDirect) 'assigned_artisan_id': assignedArtisanId,
+      if (photoUrl != null) 'photo_url': photoUrl,
     }).select().single();
 
     if (isDirect) {
@@ -295,6 +324,110 @@ class SupabaseService {
           'job_title': title,
         },
       );
+    }
+  }
+
+  static Future<Job> getJobById(String jobId) async {
+    final data = await _db
+        .from('jobs')
+        .select('*, bids(count)')
+        .eq('id', jobId)
+        .single();
+    return _toJob(data);
+  }
+
+  static Future<void> updateJobStatus(String jobId, JobStatus status) async {
+    await _db
+        .from('jobs')
+        .update({'status': _fromStatus(status)})
+        .eq('id', jobId);
+  }
+
+  static String _fromStatus(JobStatus status) {
+    switch (status) {
+      case JobStatus.requested:  return 'requested';
+      case JobStatus.quoted:     return 'quoted';
+      case JobStatus.booked:     return 'booked';
+      case JobStatus.onTheWay:   return 'on_the_way';
+      case JobStatus.inProgress: return 'in_progress';
+      case JobStatus.completed:  return 'completed';
+      case JobStatus.cancelled:  return 'cancelled';
+    }
+  }
+
+  static Future<void> markJobComplete({
+    required String jobId,
+    String? artisanId,
+    String? jobTitle,
+  }) async {
+    await _db
+        .from('jobs')
+        .update({'status': 'completed'})
+        .eq('id', jobId);
+
+    // For bid-based jobs, assigned_artisan_id is null — find the accepted bid
+    String? resolvedArtisanId = artisanId;
+    if (resolvedArtisanId == null) {
+      final bids = await _db
+          .from('bids')
+          .select('artisan_id')
+          .eq('job_id', jobId)
+          .eq('status', 'accepted')
+          .limit(1);
+      if (bids.isNotEmpty) {
+        resolvedArtisanId = bids[0]['artisan_id'] as String?;
+      }
+    }
+
+    if (resolvedArtisanId != null) {
+      // Increment completed_jobs directly — no trigger dependency
+      try {
+        final row = await _db
+            .from('artisans')
+            .select('completed_jobs')
+            .eq('id', resolvedArtisanId)
+            .single();
+        final newCount = (row['completed_jobs'] as int? ?? 0) + 1;
+        await _db
+            .from('artisans')
+            .update({'completed_jobs': newCount})
+            .eq('id', resolvedArtisanId);
+        debugPrint('[markJobComplete] completed_jobs → $newCount for $resolvedArtisanId');
+      } catch (e) {
+        debugPrint('[markJobComplete] Could not increment completed_jobs: $e');
+      }
+
+      if (jobTitle != null) {
+        try {
+          await createNotification(
+            userId: resolvedArtisanId,
+            type: 'job_completed',
+            title: 'Job Marked Complete',
+            body: '"$jobTitle" has been marked as completed.',
+            data: {'job_id': jobId},
+          );
+        } catch (e) {
+          debugPrint('[markJobComplete] Could not create notification: $e');
+        }
+      }
+    }
+  }
+
+  // Re-fetches the current artisan from DB and updates UserSession in memory.
+  // Call this after any action that changes the artisan's stats (completion, review).
+  static Future<void> refreshArtisanSession() async {
+    final uid = currentUser?.id;
+    if (uid == null || UserSession.userType != UserType.artisan) return;
+    try {
+      final data = await _db
+          .from('artisans')
+          .select('*, profiles(*)')
+          .eq('id', uid)
+          .single();
+      UserSession.loginAsArtisan(_toArtisan(data));
+      debugPrint('[refreshArtisanSession] Session refreshed. completedJobs=${UserSession.currentArtisan?.completedJobs}');
+    } catch (e) {
+      debugPrint('[refreshArtisanSession] Failed: $e');
     }
   }
 
@@ -368,12 +501,49 @@ class SupabaseService {
   // ── Bid management (homeowner) ────────────────────────────────────────────
 
   static Future<List<Bid>> getBidsForJob(String jobId) async {
-    final data = await _db
+    final bidsData = await _db
         .from('bids')
-        .select('*, artisans(trade, rating, profiles(name, phone_number, avatar_url))')
+        .select()
         .eq('job_id', jobId)
         .order('amount_rwf', ascending: true);
-    return data.map<Bid>(_toBidWithArtisan).toList();
+
+    if (bidsData.isEmpty) return [];
+
+    final artisanIds = bidsData
+        .map((b) => b['artisan_id'] as String)
+        .toSet()
+        .toList();
+
+    // artisans → profiles join works (same FK path as getArtisans)
+    final artisansData = await _db
+        .from('artisans')
+        .select('id, trade, rating, profiles(name, avatar_url)')
+        .inFilter('id', artisanIds);
+
+    final artisanMap = {
+      for (final a in artisansData) a['id'] as String: a,
+    };
+
+    return bidsData.map<Bid>((json) {
+      final artisanId = json['artisan_id'] as String;
+      final artisan = artisanMap[artisanId];
+      final profile = artisan?['profiles'] as Map<String, dynamic>?;
+      return Bid(
+        id: json['id'] as String,
+        jobId: json['job_id'] as String,
+        artisanId: artisanId,
+        amountRwf: json['amount_rwf'] as int,
+        note: json['note'] as String? ?? '',
+        status: _toBidStatus(json['status'] as String? ?? 'pending'),
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'] as String)
+            : DateTime.now(),
+        artisanName: profile?['name'] as String?,
+        artisanTrade: artisan?['trade'] as String?,
+        artisanRating: (artisan?['rating'] as num?)?.toDouble(),
+        artisanAvatarUrl: profile?['avatar_url'] as String?,
+      );
+    }).toList();
   }
 
   static Future<void> rejectBid({
@@ -509,12 +679,45 @@ class SupabaseService {
   }
 
   static Future<List<Bid>> getBidsByArtisan(String artisanId) async {
-    final data = await _db
+    final bidsData = await _db
         .from('bids')
-        .select('*, jobs(title, category, location)')
+        .select()
         .eq('artisan_id', artisanId)
         .order('created_at', ascending: false);
-    return data.map<Bid>(_toBid).toList();
+
+    if (bidsData.isEmpty) return [];
+
+    final jobIds = bidsData
+        .map((b) => b['job_id'] as String)
+        .toSet()
+        .toList();
+
+    final jobsData = await _db
+        .from('jobs')
+        .select('id, title, category, location')
+        .inFilter('id', jobIds);
+
+    final jobMap = {
+      for (final j in jobsData) j['id'] as String: j,
+    };
+
+    return bidsData.map<Bid>((json) {
+      final job = jobMap[json['job_id'] as String];
+      return Bid(
+        id: json['id'] as String,
+        jobId: json['job_id'] as String,
+        artisanId: json['artisan_id'] as String,
+        amountRwf: json['amount_rwf'] as int,
+        note: json['note'] as String? ?? '',
+        status: _toBidStatus(json['status'] as String? ?? 'pending'),
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'] as String)
+            : DateTime.now(),
+        jobTitle: job?['title'] as String?,
+        jobCategory: job?['category'] as String?,
+        jobLocation: job?['location'] as String?,
+      );
+    }).toList();
   }
 
   // ── Reviews ───────────────────────────────────────────────────────────────
@@ -543,11 +746,75 @@ class SupabaseService {
         'reviewer_name': reviewerName,
         'reviewer_id': currentUser?.id,
       });
-      debugPrint('[SupabaseService] Review added successfully');
+      debugPrint('[SupabaseService] Review added — recalculating artisan rating');
+
+      // Recalculate average rating and total count from all reviews
+      final allReviews = await _db
+          .from('reviews')
+          .select('rating')
+          .eq('artisan_id', artisanId);
+      if (allReviews.isNotEmpty) {
+        final avg = allReviews
+                .map((r) => (r['rating'] as num).toDouble())
+                .reduce((a, b) => a + b) /
+            allReviews.length;
+        final rounded = double.parse(avg.toStringAsFixed(1));
+        await _db.from('artisans').update({
+          'rating': rounded,
+          'total_reviews': allReviews.length,
+        }).eq('id', artisanId);
+        debugPrint(
+            '[SupabaseService] Rating updated to $rounded (${allReviews.length} reviews)');
+      }
     } catch (e) {
       debugPrint('[SupabaseService] Failed to add review: $e');
       rethrow;
     }
+  }
+
+  // ── Favorites ─────────────────────────────────────────────────────────────
+
+  static Future<Set<String>> getFavoriteArtisanIds(String homeownerId) async {
+    final data = await _db
+        .from('favorites')
+        .select('artisan_id')
+        .eq('homeowner_id', homeownerId);
+    return {for (final row in data) row['artisan_id'] as String};
+  }
+
+  static Future<List<VerifiedArtisan>> getFavoriteArtisans(
+      String homeownerId) async {
+    final favData = await _db
+        .from('favorites')
+        .select('artisan_id')
+        .eq('homeowner_id', homeownerId)
+        .order('created_at', ascending: false);
+
+    if (favData.isEmpty) return [];
+
+    final ids = favData.map((r) => r['artisan_id'] as String).toList();
+    final data = await _db
+        .from('artisans')
+        .select('*, profiles(*)')
+        .inFilter('id', ids);
+
+    return data.map<VerifiedArtisan>(_toArtisan).toList();
+  }
+
+  static Future<void> addFavorite(
+      {required String homeownerId, required String artisanId}) async {
+    await _db
+        .from('favorites')
+        .upsert({'homeowner_id': homeownerId, 'artisan_id': artisanId});
+  }
+
+  static Future<void> removeFavorite(
+      {required String homeownerId, required String artisanId}) async {
+    await _db
+        .from('favorites')
+        .delete()
+        .eq('homeowner_id', homeownerId)
+        .eq('artisan_id', artisanId);
   }
 
   // ── Notifications ─────────────────────────────────────────────────────────
@@ -586,6 +853,30 @@ class SupabaseService {
     return (data as List).length;
   }
 
+  // Returns a live Realtime channel that fires [onChanged] whenever the
+  // notifications table changes for this user (new notification, read status
+  // update, deletion). Caller must call .unsubscribe() on the returned channel
+  // in their dispose().
+  static RealtimeChannel subscribeToNotifications(
+    String userId,
+    void Function() onChanged,
+  ) {
+    return _db
+        .channel('notifications:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => onChanged(),
+        )
+        .subscribe();
+  }
+
   static Future<void> markNotificationRead(String notificationId) async {
     await _db
         .from('notifications')
@@ -600,6 +891,172 @@ class SupabaseService {
         .eq('user_id', userId)
         .eq('is_read', false);
   }
+
+  // ── Messaging ─────────────────────────────────────────────────────────────
+
+  static Future<List<Conversation>> getConversations(String userId) async {
+    final data = await _db
+        .from('conversations')
+        .select()
+        .or('homeowner_id.eq.$userId,artisan_id.eq.$userId')
+        .order('last_message_at', ascending: false);
+
+    if (data.isEmpty) return [];
+
+    // Collect IDs we need profiles for (the other participant)
+    final otherIds = data
+        .map<String>((c) => c['homeowner_id'] == userId
+            ? c['artisan_id'] as String
+            : c['homeowner_id'] as String)
+        .toSet()
+        .toList();
+
+    final profilesData = await _db
+        .from('profiles')
+        .select('id, name, avatar_url')
+        .inFilter('id', otherIds);
+    final profileMap = {for (final p in profilesData) p['id'] as String: p};
+
+    // Fetch job titles for any job-linked conversations
+    final jobIds = data
+        .where((c) => c['job_id'] != null)
+        .map((c) => c['job_id'] as String)
+        .toSet()
+        .toList();
+    final jobTitleMap = <String, String>{};
+    if (jobIds.isNotEmpty) {
+      final jobsData = await _db
+          .from('jobs')
+          .select('id, title')
+          .inFilter('id', jobIds);
+      for (final j in jobsData) {
+        jobTitleMap[j['id'] as String] = j['title'] as String;
+      }
+    }
+
+    // Unread counts: messages not sent by me that are unread
+    final convIds = data.map((c) => c['id'] as String).toList();
+    final unreadRows = await _db
+        .from('messages')
+        .select('conversation_id')
+        .inFilter('conversation_id', convIds)
+        .neq('sender_id', userId)
+        .eq('is_read', false);
+    final unreadCounts = <String, int>{};
+    for (final m in unreadRows) {
+      final cid = m['conversation_id'] as String;
+      unreadCounts[cid] = (unreadCounts[cid] ?? 0) + 1;
+    }
+
+    return data.map<Conversation>((c) {
+      final otherId = c['homeowner_id'] == userId
+          ? c['artisan_id'] as String
+          : c['homeowner_id'] as String;
+      final profile = profileMap[otherId];
+      final jobId = c['job_id'] as String?;
+      return Conversation(
+        id: c['id'] as String,
+        homeownerId: c['homeowner_id'] as String,
+        artisanId: c['artisan_id'] as String,
+        jobId: jobId,
+        lastMessage: c['last_message'] as String?,
+        lastMessageAt: c['last_message_at'] != null
+            ? DateTime.parse(c['last_message_at'] as String)
+            : DateTime.now(),
+        createdAt: DateTime.parse(c['created_at'] as String),
+        otherPersonName: profile?['name'] as String?,
+        otherPersonAvatarUrl: profile?['avatar_url'] as String?,
+        jobTitle: jobId != null ? jobTitleMap[jobId] : null,
+        unreadCount: unreadCounts[c['id'] as String] ?? 0,
+      );
+    }).toList();
+  }
+
+  // Returns the conversation ID, creating one if it doesn't exist yet.
+  static Future<String> getOrCreateConversation({
+    required String homeownerId,
+    required String artisanId,
+    String? jobId,
+  }) async {
+    final existing = await _db
+        .from('conversations')
+        .select('id')
+        .eq('homeowner_id', homeownerId)
+        .eq('artisan_id', artisanId)
+        .maybeSingle();
+
+    if (existing != null) return existing['id'] as String;
+
+    final created = await _db.from('conversations').insert({
+      'homeowner_id': homeownerId,
+      'artisan_id': artisanId,
+      if (jobId != null) 'job_id': jobId,
+      'last_message_at': DateTime.now().toIso8601String(),
+    }).select('id').single();
+    return created['id'] as String;
+  }
+
+  static Future<List<Message>> getMessages(String conversationId) async {
+    final data = await _db
+        .from('messages')
+        .select()
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: true);
+    return data.map<Message>(_toMessage).toList();
+  }
+
+  static Future<void> sendMessage({
+    required String conversationId,
+    required String senderId,
+    required String body,
+  }) async {
+    await _db.from('messages').insert({
+      'conversation_id': conversationId,
+      'sender_id': senderId,
+      'body': body,
+    });
+    await _db.from('conversations').update({
+      'last_message': body,
+      'last_message_at': DateTime.now().toIso8601String(),
+    }).eq('id', conversationId);
+  }
+
+  static RealtimeChannel subscribeToMessages(
+      String conversationId, void Function() onNew) {
+    return _db
+        .channel('messages:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: conversationId,
+          ),
+          callback: (_) => onNew(),
+        )
+        .subscribe();
+  }
+
+  static Future<void> markMessagesRead(
+      String conversationId, String recipientId) async {
+    await _db
+        .from('messages')
+        .update({'is_read': true})
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', recipientId)
+        .eq('is_read', false);
+  }
+
+  static Message _toMessage(Map<String, dynamic> json) => Message(
+        id: json['id'] as String,
+        conversationId: json['conversation_id'] as String,
+        senderId: json['sender_id'] as String,
+        body: json['body'] as String,
+        isRead: json['is_read'] as bool? ?? false,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
 
   static AppNotification _toNotification(Map<String, dynamic> json) {
     return AppNotification(
@@ -750,45 +1207,8 @@ class SupabaseService {
           ? DateTime.parse(json['requested_at'] as String)
           : DateTime.now(),
       assignedArtisanId: json['assigned_artisan_id'] as String?,
+      photoUrl: json['photo_url'] as String?,
       bidCount: bidCount,
-    );
-  }
-
-  static Bid _toBidWithArtisan(Map<String, dynamic> json) {
-    final artisan = json['artisans'] as Map<String, dynamic>?;
-    final profile = artisan?['profiles'] as Map<String, dynamic>?;
-    return Bid(
-      id: json['id'] as String,
-      jobId: json['job_id'] as String,
-      artisanId: json['artisan_id'] as String,
-      amountRwf: json['amount_rwf'] as int,
-      note: json['note'] as String? ?? '',
-      status: _toBidStatus(json['status'] as String? ?? 'pending'),
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
-      artisanName: profile?['name'] as String?,
-      artisanTrade: artisan?['trade'] as String?,
-      artisanRating: (artisan?['rating'] as num?)?.toDouble(),
-      artisanAvatarUrl: profile?['avatar_url'] as String?,
-    );
-  }
-
-  static Bid _toBid(Map<String, dynamic> json) {
-    final job = json['jobs'] as Map<String, dynamic>?;
-    return Bid(
-      id: json['id'] as String,
-      jobId: json['job_id'] as String,
-      artisanId: json['artisan_id'] as String,
-      amountRwf: json['amount_rwf'] as int,
-      note: json['note'] as String? ?? '',
-      status: _toBidStatus(json['status'] as String? ?? 'pending'),
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : DateTime.now(),
-      jobTitle: job?['title'] as String?,
-      jobCategory: job?['category'] as String?,
-      jobLocation: job?['location'] as String?,
     );
   }
 

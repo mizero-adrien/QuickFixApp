@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
 import 'package:quickfix/services/supabase_service.dart';
@@ -21,6 +23,7 @@ class _JobPostScreenState extends State<JobPostScreen> {
   ServiceCategory? _selectedCategory;
   DateTime? _selectedDate;
   bool _isLoading = false;
+  Uint8List? _photoBytes;
 
   final Map<ServiceCategory, String> _categoryLabels = {
     ServiceCategory.plumbing: '🔧 Plumbing',
@@ -48,6 +51,19 @@ class _JobPostScreenState extends State<JobPostScreen> {
     _budgetController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final picker = ImagePicker();
+    final XFile? file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1280,
+      maxHeight: 960,
+      imageQuality: 80,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    setState(() => _photoBytes = bytes);
   }
 
   Future<void> _pickDate({required BuildContext context}) async {
@@ -79,6 +95,14 @@ class _JobPostScreenState extends State<JobPostScreen> {
     setState(() => _isLoading = true);
     try {
       debugPrint('[JobPost] Posting job to Supabase...');
+
+      String? photoUrl;
+      if (_photoBytes != null) {
+        final pathKey = '${homeownerId}_${DateTime.now().millisecondsSinceEpoch}';
+        photoUrl = await SupabaseService.uploadJobPhoto(pathKey, _photoBytes!);
+        debugPrint('[JobPost] Photo uploaded: $photoUrl');
+      }
+
       await SupabaseService.postJob(
         homeownerId: homeownerId,
         title: _titleController.text.trim(),
@@ -86,6 +110,7 @@ class _JobPostScreenState extends State<JobPostScreen> {
         location: _locationController.text.trim(),
         category: _categoryValues[_selectedCategory!]!,
         budgetRwf: int.tryParse(_budgetController.text.trim()),
+        photoUrl: photoUrl,
       );
       debugPrint('[JobPost] Job posted successfully');
       if (mounted) _showSuccessDialog();
@@ -349,6 +374,65 @@ class _JobPostScreenState extends State<JobPostScreen> {
                   }
                   return null;
                 },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Photo picker
+              _buildLabel('Job Photo (optional)'),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _pickPhoto,
+                child: Container(
+                  height: 160,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _photoBytes != null
+                          ? AppTheme.primary
+                          : Colors.grey.shade300,
+                      width: _photoBytes != null ? 2 : 1,
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _photoBytes != null
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.memory(_photoBytes!, fit: BoxFit.cover),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _photoBytes = null),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_photo_alternate_outlined,
+                                size: 40, color: Colors.grey.shade400),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap to add a photo of the job site',
+                              style: TextStyle(
+                                  fontSize: 13, color: Colors.grey.shade500),
+                            ),
+                          ],
+                        ),
+                ),
               ),
 
               const SizedBox(height: 32),

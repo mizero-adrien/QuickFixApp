@@ -15,6 +15,7 @@ class JobListScreen extends StatefulWidget {
 
 class _JobListScreenState extends State<JobListScreen> {
   List<Job> _jobs = [];
+  Set<String> _bidJobIds = {};
   bool _isLoading = true;
   String _selectedFilter = 'All';
 
@@ -47,7 +48,18 @@ class _JobListScreenState extends State<JobListScreen> {
       debugPrint('[JobList] Loading open jobs from Supabase...');
       final jobs = await SupabaseService.getOpenJobs();
       debugPrint('[JobList] Loaded ${jobs.length} real jobs from Supabase');
-      if (mounted) setState(() => _jobs = jobs);
+
+      Set<String> bidIds = {};
+      final artisanId = UserSession.currentArtisan?.id ??
+          SupabaseService.currentUser?.id;
+      if (artisanId != null) {
+        bidIds = await SupabaseService.getArtisanBidJobIds(artisanId);
+      }
+
+      if (mounted) setState(() {
+        _jobs = jobs;
+        _bidJobIds = bidIds;
+      });
     } catch (e) {
       debugPrint('[JobList] Supabase error: $e');
       if (mounted) setState(() => _jobs = []);
@@ -182,12 +194,21 @@ class _JobListScreenState extends State<JobListScreen> {
                     itemBuilder: (context, index) {
                       // Covers A1 — final variable
                       final job = _filteredJobs[index];
+                      final hasBid = _bidJobIds.contains(job.id);
                       return _JobCard(
                         job: job,
+                        hasBid: hasBid,
                         statusColor: _statusColor(job.status),
-                        onBidSubmitted: () {
-                          _loadJobs();
-                          widget.onBidPosted?.call();
+                        onTap: () async {
+                          final bidPosted = await Navigator.pushNamed(
+                            context,
+                            '/job-detail',
+                            arguments: {'job': job, 'hasBid': hasBid},
+                          );
+                          if (bidPosted == true) {
+                            _loadJobs();
+                            widget.onBidPosted?.call();
+                          }
                         },
                       );
                     },
@@ -202,18 +223,22 @@ class _JobListScreenState extends State<JobListScreen> {
 // Reusable job card widget — covers C3
 class _JobCard extends StatelessWidget {
   final Job job;
+  final bool hasBid;
   final Color statusColor;
-  final VoidCallback onBidSubmitted;
+  final VoidCallback onTap;
 
   const _JobCard({
     required this.job,
+    required this.hasBid,
     required this.statusColor,
-    required this.onBidSubmitted,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -240,21 +265,52 @@ class _JobCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    job.statusLabel,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
+                Row(
+                  children: [
+                    if (hasBid) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle,
+                                size: 11, color: AppTheme.success),
+                            SizedBox(width: 4),
+                            Text(
+                              'Bid Sent',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.success,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        job.statusLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -341,16 +397,23 @@ class _JobCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                ElevatedButton(
-                  onPressed: () => _showBidDialog(context, job),
+                ElevatedButton.icon(
+                  onPressed: onTap,
+                  icon: Icon(
+                    hasBid ? Icons.visibility_outlined : Icons.arrow_forward,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                  label: Text(
+                    hasBid ? 'View Bid' : 'View Details',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        hasBid ? AppTheme.success : AppTheme.primary,
                     minimumSize: Size.zero,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
-                  ),
-                  child: const Text(
-                    'Send Bid',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                        horizontal: 16, vertical: 10),
                   ),
                 ),
               ],
@@ -358,196 +421,8 @@ class _JobCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  void _showBidDialog(BuildContext context, Job job) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _BidSheet(job: job, onBidSubmitted: onBidSubmitted),
-    );
+    ),   // Card
+    );   // GestureDetector
   }
 }
 
-// ── Bid sheet ──────────────────────────────────────────────────────────────
-
-class _BidSheet extends StatefulWidget {
-  final Job job;
-  final VoidCallback onBidSubmitted;
-
-  const _BidSheet({required this.job, required this.onBidSubmitted});
-
-  @override
-  State<_BidSheet> createState() => _BidSheetState();
-}
-
-class _BidSheetState extends State<_BidSheet> {
-  final _bidController = TextEditingController();
-  final _noteController = TextEditingController();
-  bool _isSubmitting = false;
-
-  @override
-  void dispose() {
-    _bidController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final amountText = _bidController.text.trim();
-    if (amountText.isEmpty) {
-      _snack('Please enter your bid amount', error: true);
-      return;
-    }
-    final amount = int.tryParse(amountText);
-    if (amount == null || amount < 1000) {
-      _snack('Minimum bid is 1,000 RWF', error: true);
-      return;
-    }
-
-    // Use currentArtisan id first, fall back to raw auth user id.
-    // This handles the case where the artisan row is missing but the
-    // user is authenticated.
-    final artisanId = UserSession.currentArtisan?.id
-        ?? SupabaseService.currentUser?.id;
-    if (artisanId == null) {
-      _snack('Not logged in — please log out and log in again.', error: true);
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-    try {
-      debugPrint('[BidSheet] Posting bid for job ${widget.job.id} by artisan $artisanId');
-      await SupabaseService.postBid(
-        jobId: widget.job.id,
-        artisanId: artisanId,
-        amountRwf: amount,
-        note: _noteController.text.trim(),
-        artisanName: UserSession.currentArtisan?.name,
-      );
-      debugPrint('[BidSheet] Bid posted successfully');
-      if (mounted) Navigator.pop(context);
-      widget.onBidSubmitted();
-      if (mounted) _snack('Bid sent successfully!', error: false);
-    } catch (e) {
-      debugPrint('[BidSheet] postBid failed: $e');
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        _snack('Failed to send bid: $e', error: true);
-      }
-    }
-  }
-
-  void _snack(String message, {required bool error}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: error ? AppTheme.error : AppTheme.success,
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          const Text(
-            'Send Your Bid',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.job.title,
-            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 20),
-
-          const Text('Your Price (RWF)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _bidController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: 'e.g. 8000',
-              suffixText: 'RWF',
-              filled: true,
-              fillColor: AppTheme.background,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          const Text('Note to Homeowner',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _noteController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Explain why you are the right person for this job...',
-              filled: true,
-              fillColor: AppTheme.background,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          SizedBox(
-            width: double.infinity,
-            child: _isSubmitting
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                    onPressed: _submit,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text(
-                      'Submit Bid',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}

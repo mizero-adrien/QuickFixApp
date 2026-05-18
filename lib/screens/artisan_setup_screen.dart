@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:quickfix/models/artisan.dart';
-import 'package:quickfix/models/homeowner.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class ArtisanSetupScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _ArtisanSetupScreenState extends State<ArtisanSetupScreen> {
   String? _selectedTrade;
   final Set<String> _selectedSkills = {};
   bool _isLoading = false;
+  Uint8List? _avatarBytes;
 
   // Covers A3 — Map of trades to skills
   final Map<String, List<String>> _tradeSkills = {
@@ -75,50 +77,80 @@ class _ArtisanSetupScreenState extends State<ArtisanSetupScreen> {
     super.dispose();
   }
 
+  Future<void> _pickAvatar() async {
+    final picker = ImagePicker();
+    final XFile? file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 80,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    setState(() => _avatarBytes = bytes);
+  }
+
   // Covers B5 — async/await
   Future<void> _completeSetup(Map<String, dynamic> args) async {
-    if (_formKey.currentState!.validate()) {
-      // Covers A4 — validation check
-      if (_selectedSkills.isEmpty) {
+    if (!_formKey.currentState!.validate()) return;
+    // Covers A4 — validation check
+    if (_selectedSkills.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one skill'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please select at least one skill'),
+            content: Text('Session expired. Please log in again.'),
             backgroundColor: AppTheme.error,
           ),
         );
-        return;
+      }
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      String? avatarUrl;
+      if (_avatarBytes != null) {
+        avatarUrl =
+            await SupabaseService.uploadArtisanAvatar(userId, _avatarBytes!);
       }
 
-      setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 2));
-      setState(() => _isLoading = false);
+      await SupabaseService.createArtisanProfile(
+        id: userId,
+        trade: _selectedTrade!,
+        skills: _selectedSkills.toList(),
+        yearsOfExperience:
+            int.tryParse(_experienceController.text.trim()) ?? 1,
+        startingPrice: int.tryParse(_priceController.text.trim()) ?? 5000,
+        about: _aboutController.text.trim(),
+        avatarUrl: avatarUrl,
+      );
 
+      await SupabaseService.loadUserSession();
+
+      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+    } catch (e) {
+      debugPrint('[ArtisanSetup] Failed: $e');
       if (mounted) {
-        // Create artisan and login
-        final artisan = VerifiedArtisan(
-          id: 'a${DateTime.now().millisecondsSinceEpoch}',
-          name: args['name'] as String,
-          phoneNumber: args['phone'] as String,
-          location: args['district'] as String,
-          rating: 0.0,
-          totalReviews: 0,
-          trade: _selectedTrade!,
-          skills: _selectedSkills.toList(),
-          yearsOfExperience:
-              int.tryParse(_experienceController.text.trim()) ?? 1,
-          completedJobs: 0,
-          about: _aboutController.text.trim(),
-          startingPrice:
-              int.tryParse(_priceController.text.trim()) ?? 5000,
-          isAvailable: true,
-          verificationId:
-              'VRF-${DateTime.now().millisecondsSinceEpoch}',
-          verifiedOn: DateTime.now(),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Setup failed: $e'),
+            backgroundColor: AppTheme.error,
+          ),
         );
-
-        UserSession.loginAsArtisan(artisan);
-        Navigator.pushReplacementNamed(context, '/home');
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -148,7 +180,7 @@ class _ArtisanSetupScreenState extends State<ArtisanSetupScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha:0.08),
+                  color: AppTheme.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
@@ -178,6 +210,45 @@ class _ArtisanSetupScreenState extends State<ArtisanSetupScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Profile photo picker
+              _buildLabel('Profile Photo (optional)'),
+              const SizedBox(height: 10),
+              Center(
+                child: GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                        backgroundImage: _avatarBytes != null
+                            ? MemoryImage(_avatarBytes!)
+                            : null,
+                        child: _avatarBytes == null
+                            ? const Icon(Icons.person_outline,
+                                size: 48, color: AppTheme.primary)
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.camera_alt,
+                              size: 16, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 

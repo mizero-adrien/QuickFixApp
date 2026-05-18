@@ -40,11 +40,12 @@ class _LoginScreenState extends State<LoginScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          bool isSending = false;
-          bool emailSent = false;
+      builder: (ctx) {
+        bool isSending = false;
+        bool emailSent = false;
 
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
           Future<void> send() async {
             if (!formKey.currentState!.validate()) return;
             setModalState(() => isSending = true);
@@ -227,7 +228,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         },
-      ),
+        );
+      },
     );
   }
 

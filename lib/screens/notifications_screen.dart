@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quickfix/models/app_notification.dart';
 import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/services/supabase_service.dart';
@@ -14,13 +15,26 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<AppNotification> _notifications = [];
   bool _isLoading = true;
-  // Track which bid_accepted notification is being acted on
   String? _actingOnId;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _subscribe();
+  }
+
+  void _subscribe() {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    _channel = SupabaseService.subscribeToNotifications(userId, _load);
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -394,6 +408,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return AppTheme.success;
       case 'invitation_declined':
         return AppTheme.error;
+      case 'job_completed':
+        return AppTheme.success;
       default:
         return AppTheme.textSecondary;
     }
@@ -415,6 +431,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.check_circle_outline;
       case 'invitation_declined':
         return Icons.cancel_outlined;
+      case 'job_completed':
+        return Icons.task_alt;
       default:
         return Icons.notifications_outlined;
     }

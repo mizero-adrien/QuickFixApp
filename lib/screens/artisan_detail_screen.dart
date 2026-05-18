@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/homeowner.dart';
+import 'package:quickfix/models/message.dart';
 import 'package:quickfix/models/review.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
@@ -18,6 +19,9 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
   List<Review> _reviews = [];
   bool _isLoadingReviews = true;
   bool _showFullAbout = false;
+  bool _isFavorite = false;
+  bool _favoriteLoading = false;
+  bool _messagingLoading = false;
 
   @override
   void didChangeDependencies() {
@@ -26,6 +30,42 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
     final artisan =
         ModalRoute.of(context)!.settings.arguments as VerifiedArtisan;
     _loadReviews(artisan.id);
+    _loadFavoriteState(artisan.id);
+  }
+
+  Future<void> _loadFavoriteState(String artisanId) async {
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) return;
+    try {
+      final ids = await SupabaseService.getFavoriteArtisanIds(homeownerId);
+      if (mounted) setState(() => _isFavorite = ids.contains(artisanId));
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite() async {
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) return;
+    final artisan =
+        ModalRoute.of(context)!.settings.arguments as VerifiedArtisan;
+    setState(() => _favoriteLoading = true);
+    try {
+      if (_isFavorite) {
+        await SupabaseService.removeFavorite(
+            homeownerId: homeownerId, artisanId: artisan.id);
+      } else {
+        await SupabaseService.addFavorite(
+            homeownerId: homeownerId, artisanId: artisan.id);
+      }
+      if (mounted) setState(() => _isFavorite = !_isFavorite);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update favorites: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _favoriteLoading = false);
+    }
   }
 
   // Covers B5 — async/await
@@ -102,6 +142,40 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
     }
   }
 
+  Future<void> _messageArtisan(VerifiedArtisan artisan) async {
+    final homeowner = UserSession.currentHomeowner;
+    if (homeowner == null) return;
+    setState(() => _messagingLoading = true);
+    try {
+      final convId = await SupabaseService.getOrCreateConversation(
+        homeownerId: homeowner.id,
+        artisanId: artisan.id,
+      );
+      final conversation = Conversation(
+        id: convId,
+        homeownerId: homeowner.id,
+        artisanId: artisan.id,
+        lastMessageAt: DateTime.now(),
+        createdAt: DateTime.now(),
+        otherPersonName: artisan.name,
+        otherPersonAvatarUrl: artisan.profileImageUrl,
+      );
+      if (mounted) {
+        Navigator.pushNamed(context, '/chat', arguments: conversation);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Could not open chat: $e'),
+              backgroundColor: AppTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _messagingLoading = false);
+    }
+  }
+
   void _showRatingDialog() {
     final artisan =
         ModalRoute.of(context)!.settings.arguments as VerifiedArtisan;
@@ -140,93 +214,40 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
               ),
             ),
             actions: [
-              Container(
-                margin: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.9),
-                  shape: BoxShape.circle,
+              if (UserSession.userType == UserType.homeowner)
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: _favoriteLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            _isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _isFavorite
+                                ? Colors.red
+                                : AppTheme.secondary,
+                          ),
+                          onPressed: _toggleFavorite,
+                        ),
                 ),
-                child: IconButton(
-                  icon: const Icon(Icons.favorite_border,
-                      color: AppTheme.secondary),
-                  onPressed: () {},
-                ),
-              ),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-<<<<<<< HEAD
                   _buildHeroImage(artisan),
-=======
-                  artisan.profileImageUrl != null
-                      ? (artisan.profileImageUrl!.startsWith('http')
-                          ? Image.network(
-                              artisan.profileImageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: AppTheme.primary.withValues(alpha: 0.15),
-                                child: Center(
-                                  child: CircleAvatar(
-                                    radius: 64,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.2),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontSize: 64,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Image.asset(
-                              artisan.profileImageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: AppTheme.primary.withValues(alpha: 0.15),
-                                child: Center(
-                                  child: CircleAvatar(
-                                    radius: 64,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.2),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontSize: 64,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ))
-                      : Container(
-                          color: AppTheme.primary.withValues(alpha: 0.15),
-                          child: Center(
-                            child: CircleAvatar(
-                              radius: 64,
-                              backgroundColor:
-                                  AppTheme.primary.withValues(alpha: 0.2),
-                              child: Text(
-                                artisan.name[0],
-                                style: const TextStyle(
-                                  fontSize: 64,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
->>>>>>> d477498 (password recovery)
                   // Dark gradient overlay at bottom
                   Positioned(
                     bottom: 0,
@@ -557,46 +578,83 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
                 ),
               ],
             ),
-            // Buttons row — Book and Rate buttons for homeowners
+            // Buttons row — Message / Rate / Book for homeowners
             if (UserSession.userType == UserType.homeowner) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
+                  // Message button
                   Expanded(
-                    flex: 1,
+                    child: OutlinedButton(
+                      onPressed: _messagingLoading
+                          ? null
+                          : () => _messageArtisan(artisan),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: const BorderSide(color: AppTheme.primary),
+                      ),
+                      child: _messagingLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded,
+                                    size: 16, color: AppTheme.primary),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Message',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Rate button
+                  Expanded(
                     child: OutlinedButton(
                       onPressed: _showRatingDialog,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.star_outline, size: 18),
-                          SizedBox(width: 8),
+                          Icon(Icons.star_outline, size: 16),
+                          SizedBox(width: 6),
                           Text(
                             'Rate',
                             style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                                fontSize: 13, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  // Book Now button
                   Expanded(
-                    flex: 1,
                     child: ElevatedButton(
                       onPressed: () => Navigator.pushNamed(
                         context,
                         '/booking-form',
                         arguments: artisan,
                       ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                       child: const Text(
                         'Book Now',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                            fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),

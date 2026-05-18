@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/bid.dart';
@@ -11,6 +12,7 @@ import 'package:quickfix/widgets/category_chip.dart';
 import 'package:quickfix/widgets/language_selector.dart';
 import 'package:quickfix/screens/job_list_screen.dart';
 import 'package:quickfix/screens/invitations_screen.dart';
+import 'package:quickfix/screens/conversations_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedBidFilter = 'All';
   int _unreadCount = 0;
   int _pendingInvitations = 0;
+  Set<String> _favoriteIds = {};
+  RealtimeChannel? _notifChannel;
 
   // Covers A2 — arrow function
   List<VerifiedArtisan> get _filteredArtisans {
@@ -72,8 +76,19 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       _loadArtisans();
       _loadMyJobs();
+      _loadFavorites();
     }
     _loadUnreadCount();
+    _subscribeToNotifications();
+  }
+
+  void _subscribeToNotifications() {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    _notifChannel = SupabaseService.subscribeToNotifications(
+      userId,
+      _loadUnreadCount,
+    );
   }
 
   Future<void> _loadPendingInvitations() async {
@@ -96,8 +111,49 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  Future<void> _loadFavorites() async {
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) return;
+    try {
+      final ids = await SupabaseService.getFavoriteArtisanIds(homeownerId);
+      if (mounted) setState(() => _favoriteIds = ids);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleFavorite(String artisanId) async {
+    final homeownerId = UserSession.currentHomeowner?.id;
+    if (homeownerId == null) return;
+    final alreadyFav = _favoriteIds.contains(artisanId);
+    setState(() {
+      if (alreadyFav) {
+        _favoriteIds = {..._favoriteIds}..remove(artisanId);
+      } else {
+        _favoriteIds = {..._favoriteIds, artisanId};
+      }
+    });
+    try {
+      if (alreadyFav) {
+        await SupabaseService.removeFavorite(
+            homeownerId: homeownerId, artisanId: artisanId);
+      } else {
+        await SupabaseService.addFavorite(
+            homeownerId: homeownerId, artisanId: artisanId);
+      }
+    } catch (e) {
+      // Revert on error
+      setState(() {
+        if (alreadyFav) {
+          _favoriteIds = {..._favoriteIds, artisanId};
+        } else {
+          _favoriteIds = {..._favoriteIds}..remove(artisanId);
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _notifChannel?.unsubscribe();
     _searchController.dispose();
     super.dispose();
   }
@@ -249,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
         case 3:
           return _buildArtisanProfileTab();
         case 4:
-          return _buildArtisanSettingsTab();
+          return const ConversationsScreen();
         default:
           return _buildArtisanJobsTab();
       }
@@ -328,6 +384,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case 2:
         return _buildMyJobsScreen(context);
       case 3:
+        return const ConversationsScreen();
+      case 4:
         return _buildProfileScreen(context);
       default:
         return _buildHomeownerHome(context);
@@ -446,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.work_outline),
                   activeIcon: const Icon(Icons.work),
-                  label: localizations.jobs,
+                  label: 'For You',
                 ),
                 BottomNavigationBarItem(
                   icon: _invitationIcon(),
@@ -464,9 +522,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: localizations.profile,
                 ),
                 BottomNavigationBarItem(
-                  icon: const Icon(Icons.settings_outlined),
-                  activeIcon: const Icon(Icons.settings),
-                  label: 'Settings',
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  activeIcon: const Icon(Icons.chat_bubble_rounded),
+                  label: 'Messages',
                 ),
               ],
             )
@@ -493,6 +551,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: const Icon(Icons.work_outline),
                   activeIcon: const Icon(Icons.work),
                   label: localizations.jobs,
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  activeIcon: const Icon(Icons.chat_bubble_rounded),
+                  label: 'Messages',
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.person_outline),
@@ -625,7 +688,13 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_artisans.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
+                child: GestureDetector(
+                  onTap: () => Navigator.pushNamed(
+                    context,
+                    '/artisan-detail',
+                    arguments: _artisans.first,
+                  ).then((_) => _loadFavorites()),
+                  child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -640,19 +709,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor:
-                            AppTheme.primary.withValues(alpha: 0.1),
-                        child: Text(
-                          _artisans.first.name[0],
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primary,
-                            fontSize: 24,
-                          ),
-                        ),
-                      ),
+                      _searchResultAvatar(_artisans.first, radius: 32),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -719,6 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+                ),
               ),
 
             const SizedBox(height: 16),
@@ -738,7 +796,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: () => setState(() => _currentIndex = 1),
                     child: Text(localizations.seeAll),
                   ),
                 ],
@@ -771,11 +829,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           .map(
                             (artisan) => ArtisanCard(
                               artisan: artisan,
+                              isFavorite: _favoriteIds.contains(artisan.id),
+                              onFavoriteToggle: () => _toggleFavorite(artisan.id),
                               onTap: () => Navigator.pushNamed(
                                 context,
                                 '/artisan-detail',
                                 arguments: artisan,
-                              ),
+                              ).then((_) => _loadFavorites()),
                             ),
                           )
                           .toList(),
@@ -827,69 +887,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-<<<<<<< HEAD
                           _searchResultAvatar(artisan),
-=======
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: artisan.profileImageUrl != null
-                                ? (artisan.profileImageUrl!.startsWith('http')
-                                    ? Image.network(
-                                        artisan.profileImageUrl!,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error,
-                                                stackTrace) =>
-                                            CircleAvatar(
-                                          radius: 24,
-                                          backgroundColor:
-                                              AppTheme.primary.withValues(
-                                                  alpha: 0.1),
-                                          child: Text(
-                                            artisan.name[0],
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : Image.asset(
-                                        artisan.profileImageUrl!,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error,
-                                                stackTrace) =>
-                                            CircleAvatar(
-                                          radius: 24,
-                                          backgroundColor:
-                                              AppTheme.primary.withValues(
-                                                  alpha: 0.1),
-                                          child: Text(
-                                            artisan.name[0],
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      ))
-                                : CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.1),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                          ),
->>>>>>> d477498 (password recovery)
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -1096,19 +1094,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 32,
-                backgroundColor:
-                    AppTheme.primary.withValues(alpha: 0.1),
-                child: Text(
-                  artisan.name[0],
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primary,
-                  ),
-                ),
-              ),
+              _searchResultAvatar(artisan, radius: 32),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -1495,6 +1481,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Action row
                 Row(
                   children: [
+                    // Track Status button — always visible for active jobs
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/job-status',
+                        arguments: job.id,
+                      ).then((_) => _loadMyJobs()),
+                      icon: const Icon(Icons.timeline, size: 14),
+                      label: const Text('Track',
+                          style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: const BorderSide(color: AppTheme.primary),
+                        foregroundColor: AppTheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     if (job.status == JobStatus.requested ||
                         job.status == JobStatus.quoted)
                       Expanded(
@@ -1542,27 +1548,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     if (job.status == JobStatus.booked)
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.verified_user_outlined,
-                                  size: 14, color: AppTheme.primary),
-                              SizedBox(width: 6),
-                              Text(
-                                'Artisan Booked',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.primary,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
+                        child: ElevatedButton.icon(
+                          onPressed: () => _confirmMarkComplete(job),
+                          icon: const Icon(Icons.check_circle_outline, size: 14),
+                          label: const Text('Mark Complete'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.success,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -1632,6 +1630,65 @@ class _HomeScreenState extends State<HomeScreen> {
         onBidAccepted: _loadMyJobs,
       ),
     );
+  }
+
+  void _confirmMarkComplete(Job job) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Mark Job Complete?'),
+        content: Text(
+          'Confirm that "${job.title}" has been completed successfully.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Not Yet'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _markJobComplete(job);
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success),
+            child: const Text('Yes, Complete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _markJobComplete(Job job) async {
+    try {
+      await SupabaseService.markJobComplete(
+        jobId: job.id,
+        artisanId: job.assignedArtisanId,
+        jobTitle: job.title,
+      );
+      await SupabaseService.refreshArtisanSession();
+      await _loadMyJobs();
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Job marked as complete.'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
   }
 
   void _confirmCancelJob(Job job) {
@@ -2246,27 +2303,119 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(
                   fontSize: 11, color: AppTheme.textSecondary),
             ),
+            if (bid.status == BidStatus.accepted) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/job-status',
+                        arguments: bid.jobId,
+                      ).then((_) => _loadMyBids()),
+                      icon: const Icon(Icons.timeline, size: 14),
+                      label: const Text('Track Status',
+                          style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: const BorderSide(color: AppTheme.primary),
+                        foregroundColor: AppTheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _confirmArtisanMarkComplete(bid),
+                      icon: const Icon(Icons.check_circle_outline, size: 14),
+                      label: const Text('Complete',
+                          style: TextStyle(fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _searchResultAvatar(VerifiedArtisan artisan) {
+  void _confirmArtisanMarkComplete(Bid bid) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Mark Job Complete?'),
+        content: Text(
+          'Confirm that "${bid.jobTitle ?? 'this job'}" has been completed.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Not Yet'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await SupabaseService.markJobComplete(jobId: bid.jobId);
+                await SupabaseService.refreshArtisanSession();
+                await _loadMyBids();
+                if (mounted) {
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Job marked as complete.'),
+                      backgroundColor: AppTheme.success,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed: $e'),
+                      backgroundColor: AppTheme.error,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success),
+            child: const Text('Yes, Complete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _searchResultAvatar(VerifiedArtisan artisan, {double radius = 24}) {
     final url = artisan.profileImageUrl;
+    final size = radius * 2;
     final fallback = CircleAvatar(
-      radius: 24,
+      radius: radius,
       backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
       child: Text(artisan.name[0],
-          style: const TextStyle(
-              fontWeight: FontWeight.bold, color: AppTheme.primary)),
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: AppTheme.primary,
+              fontSize: radius * 0.75)),
     );
     if (url == null || url.isEmpty) return fallback;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(radius),
       child: Image.network(url,
-          width: 48,
-          height: 48,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
           loadingBuilder: (context, child, progress) =>
               progress == null ? child : fallback,

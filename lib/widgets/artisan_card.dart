@@ -6,11 +6,15 @@ import 'package:quickfix/theme/app_theme.dart';
 class ArtisanCard extends StatelessWidget {
   final Artisan artisan;
   final VoidCallback onTap;
+  final bool isFavorite;
+  final VoidCallback? onFavoriteToggle;
 
   const ArtisanCard({
     super.key,
     required this.artisan,
     required this.onTap,
+    this.isFavorite = false,
+    this.onFavoriteToggle,
   });
 
   @override
@@ -23,7 +27,7 @@ class ArtisanCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Artisan photo and availability badge
+              // Artisan photo, availability badge, and favorite button
               Stack(
                 children: [
                   _ArtisanAvatar(artisan: artisan),
@@ -38,6 +42,33 @@ class ArtisanCard extends StatelessWidget {
                           color: AppTheme.success,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  if (onFavoriteToggle != null)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: onFavoriteToggle,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            size: 16,
+                            color: isFavorite ? Colors.red : AppTheme.textSecondary,
+                          ),
                         ),
                       ),
                     ),
