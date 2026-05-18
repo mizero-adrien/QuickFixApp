@@ -92,48 +92,7 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  artisan.profileImageUrl != null
-                      ? Image.asset(
-                          artisan.profileImageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(
-                            color: AppTheme.primary.withValues(alpha: 0.15),
-                            child: Center(
-                              child: CircleAvatar(
-                                radius: 64,
-                                backgroundColor:
-                                    AppTheme.primary.withValues(alpha: 0.2),
-                                child: Text(
-                                  artisan.name[0],
-                                  style: const TextStyle(
-                                    fontSize: 64,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      : Container(
-                          color: AppTheme.primary.withValues(alpha: 0.15),
-                          child: Center(
-                            child: CircleAvatar(
-                              radius: 64,
-                              backgroundColor:
-                                  AppTheme.primary.withValues(alpha: 0.2),
-                              child: Text(
-                                artisan.name[0],
-                                style: const TextStyle(
-                                  fontSize: 64,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                  _buildHeroImage(artisan),
                   // Dark gradient overlay at bottom
                   Positioned(
                     bottom: 0,
@@ -478,6 +437,37 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildHeroImage(VerifiedArtisan artisan) {
+    final url = artisan.profileImageUrl;
+    final placeholder = Container(
+      color: AppTheme.primary.withValues(alpha: 0.15),
+      child: Center(
+        child: CircleAvatar(
+          radius: 64,
+          backgroundColor: AppTheme.primary.withValues(alpha: 0.2),
+          child: Text(
+            artisan.name[0],
+            style: const TextStyle(
+              fontSize: 64,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (url == null || url.isEmpty) return placeholder;
+
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : placeholder,
+      errorBuilder: (context, error, stackTrace) => placeholder,
     );
   }
 }
