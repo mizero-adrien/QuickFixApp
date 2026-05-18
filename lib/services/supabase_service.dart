@@ -231,8 +231,11 @@ class SupabaseService {
     required String location,
     required String category,
     int? budgetRwf,
+    String? assignedArtisanId,
+    String? assignedArtisanName,
   }) async {
-    await _db.from('jobs').insert({
+    final isDirect = assignedArtisanId != null;
+    final row = await _db.from('jobs').insert({
       'homeowner_id': homeownerId,
       'title': title,
       'description': description,
@@ -240,7 +243,22 @@ class SupabaseService {
       'category': category,
       'budget_rwf': budgetRwf,
       'status': 'requested',
-    });
+      if (isDirect) 'assigned_artisan_id': assignedArtisanId,
+    }).select().single();
+
+    if (isDirect) {
+      await createNotification(
+        userId: assignedArtisanId!,
+        type: 'job_invitation',
+        title: 'New Job Invitation',
+        body: 'You have been directly booked for: $title',
+        data: {
+          'job_id': row['id'] as String,
+          'homeowner_id': homeownerId,
+          'job_title': title,
+        },
+      );
+    }
   }
 
   static Future<void> cancelJob(String jobId) async {
@@ -255,8 +273,50 @@ class SupabaseService {
         .from('jobs')
         .select()
         .eq('status', 'requested')
+        .filter('assigned_artisan_id', 'is', null)
         .order('requested_at', ascending: false);
     return data.map<Job>(_toJob).toList();
+  }
+
+  static Future<List<Job>> getInvitationsForArtisan(String artisanId) async {
+    final data = await _db
+        .from('jobs')
+        .select()
+        .eq('assigned_artisan_id', artisanId)
+        .order('requested_at', ascending: false);
+    return data.map<Job>(_toJob).toList();
+  }
+
+  static Future<void> acceptInvitation({
+    required String jobId,
+    required String homeownerId,
+    required String artisanName,
+    required String jobTitle,
+  }) async {
+    await _db.from('jobs').update({'status': 'booked'}).eq('id', jobId);
+    await createNotification(
+      userId: homeownerId,
+      type: 'invitation_accepted',
+      title: 'Booking Confirmed!',
+      body: '$artisanName accepted your booking for "$jobTitle".',
+      data: {'job_id': jobId, 'artisan_name': artisanName, 'job_title': jobTitle},
+    );
+  }
+
+  static Future<void> declineInvitation({
+    required String jobId,
+    required String homeownerId,
+    required String artisanName,
+    required String jobTitle,
+  }) async {
+    await _db.from('jobs').update({'status': 'cancelled'}).eq('id', jobId);
+    await createNotification(
+      userId: homeownerId,
+      type: 'invitation_declined',
+      title: 'Booking Declined',
+      body: '$artisanName declined your booking for "$jobTitle".',
+      data: {'job_id': jobId, 'artisan_name': artisanName, 'job_title': jobTitle},
+    );
   }
 
   static Future<List<Job>> getJobsByHomeowner(String homeownerId) async {

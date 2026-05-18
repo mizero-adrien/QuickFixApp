@@ -84,6 +84,8 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         location: _locationController.text.trim(),
         category: _categoryLabels[_selectedCategory!]!.toLowerCase(),
         budgetRwf: int.tryParse(_budgetController.text.trim()),
+        assignedArtisanId: artisan.id,
+        assignedArtisanName: artisan.name,
       );
       debugPrint('[Booking] Job posted successfully');
       if (mounted) _showSuccessDialog(artisan);
