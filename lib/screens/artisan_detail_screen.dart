@@ -157,76 +157,7 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-<<<<<<< HEAD
                   _buildHeroImage(artisan),
-=======
-                  artisan.profileImageUrl != null
-                      ? (artisan.profileImageUrl!.startsWith('http')
-                          ? Image.network(
-                              artisan.profileImageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: AppTheme.primary.withValues(alpha: 0.15),
-                                child: Center(
-                                  child: CircleAvatar(
-                                    radius: 64,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.2),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontSize: 64,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Image.asset(
-                              artisan.profileImageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                color: AppTheme.primary.withValues(alpha: 0.15),
-                                child: Center(
-                                  child: CircleAvatar(
-                                    radius: 64,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.2),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontSize: 64,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ))
-                      : Container(
-                          color: AppTheme.primary.withValues(alpha: 0.15),
-                          child: Center(
-                            child: CircleAvatar(
-                              radius: 64,
-                              backgroundColor:
-                                  AppTheme.primary.withValues(alpha: 0.2),
-                              child: Text(
-                                artisan.name[0],
-                                style: const TextStyle(
-                                  fontSize: 64,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
->>>>>>> d477498 (password recovery)
                   // Dark gradient overlay at bottom
                   Positioned(
                     bottom: 0,

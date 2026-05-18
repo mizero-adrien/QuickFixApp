@@ -827,69 +827,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-<<<<<<< HEAD
                           _searchResultAvatar(artisan),
-=======
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: artisan.profileImageUrl != null
-                                ? (artisan.profileImageUrl!.startsWith('http')
-                                    ? Image.network(
-                                        artisan.profileImageUrl!,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error,
-                                                stackTrace) =>
-                                            CircleAvatar(
-                                          radius: 24,
-                                          backgroundColor:
-                                              AppTheme.primary.withValues(
-                                                  alpha: 0.1),
-                                          child: Text(
-                                            artisan.name[0],
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : Image.asset(
-                                        artisan.profileImageUrl!,
-                                        width: 48,
-                                        height: 48,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error,
-                                                stackTrace) =>
-                                            CircleAvatar(
-                                          radius: 24,
-                                          backgroundColor:
-                                              AppTheme.primary.withValues(
-                                                  alpha: 0.1),
-                                          child: Text(
-                                            artisan.name[0],
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppTheme.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      ))
-                                : CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.1),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                          ),
->>>>>>> d477498 (password recovery)
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
