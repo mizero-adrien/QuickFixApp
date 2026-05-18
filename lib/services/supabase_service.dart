@@ -539,6 +539,7 @@ class SupabaseService {
         'rating': rating,
         'comment': comment,
         'reviewer_name': reviewerName,
+        'reviewer_id': currentUser?.id,
       });
       debugPrint('[SupabaseService] Review added successfully');
     } catch (e) {
