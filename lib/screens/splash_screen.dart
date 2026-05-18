@@ -40,12 +40,17 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
-    // Check for password recovery token in URL
+    // Check for password recovery token or route in URL
     final uri = Uri.base;
     final fragment = uri.fragment;
-    
-    if (fragment.contains('type=recovery')) {
-      debugPrint('[SplashScreen] Recovery token detected in URL');
+    final normalizedFragment = fragment.startsWith('/') ? fragment : '/$fragment';
+    final isRecovery = fragment.contains('type=recovery') ||
+        uri.queryParameters['type'] == 'recovery' ||
+        normalizedFragment.contains('/password-recovery') ||
+        uri.path == '/password-recovery';
+
+    if (isRecovery) {
+      debugPrint('[SplashScreen] Recovery token detected in URL: $uri');
       try {
         await SupabaseService.recoverSessionFromUrl(uri);
       } catch (e) {

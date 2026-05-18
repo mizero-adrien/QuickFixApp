@@ -87,9 +87,13 @@ class SupabaseService {
   static Future<void> sendPasswordReset(String email) async {
     debugPrint('[SupabaseService] Sending password reset to $email');
     try {
+<<<<<<< HEAD
       final redirectTo = kIsWeb
           ? Uri.base.origin
           : 'com.quickfix.quickfix://login-callback';
+=======
+      final redirectTo = kIsWeb ? _buildPasswordRecoveryRedirectUrl() : null;
+>>>>>>> c2e46b9 (resoving resert-password page)
       await _db.auth.resetPasswordForEmail(
         email,
         redirectTo: redirectTo,
@@ -104,14 +108,58 @@ class SupabaseService {
 
   static Future<void> recoverSessionFromUrl(Uri uri) async {
     debugPrint('[SupabaseService] Recovering auth session from URL: $uri');
+    final normalizedUri = _normalizeRecoveryUrl(uri);
+    debugPrint('[SupabaseService] Normalized recovery URL: $normalizedUri');
     try {
-      final response = await _db.auth.getSessionFromUrl(uri);
+      final response = await _db.auth.getSessionFromUrl(normalizedUri);
       debugPrint(
           '[SupabaseService] Recovery session restored; redirectType=${response.redirectType}');
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('[SupabaseService] Failed to recover session from URL: $e');
+      debugPrint(stackTrace.toString());
       rethrow;
     }
+  }
+
+  static String _buildPasswordRecoveryRedirectUrl() {
+    final baseUrl = Uri.base.toString().split('#').first;
+    return '$baseUrl#/password-recovery';
+  }
+
+  static Uri _normalizeRecoveryUrl(Uri uri) {
+    final fragment = uri.fragment;
+    if (fragment.isEmpty) {
+      return uri;
+    }
+
+    final normalizedFragment = fragment.startsWith('/') ? fragment.substring(1) : fragment;
+    final fragmentUri = Uri.parse(normalizedFragment);
+    final fragmentQuery = fragmentUri.query;
+
+    if (normalizedFragment.startsWith('password-recovery')) {
+      if (uri.queryParameters['code'] != null) {
+        return uri;
+      }
+      if (fragmentQuery.isNotEmpty) {
+        return Uri.parse('${uri.origin}?$fragmentQuery');
+      }
+      return uri;
+    }
+
+    if (fragmentQuery.isNotEmpty) {
+      if (fragmentQuery.contains('access_token=') ||
+          fragmentQuery.contains('refresh_token=') ||
+          fragmentQuery.contains('type=') ||
+          fragmentQuery.contains('error=')) {
+        return Uri.parse('${uri.origin}?$fragmentQuery');
+      }
+    }
+
+    if (normalizedFragment.contains('access_token=')) {
+      return Uri.parse('${uri.origin}?$normalizedFragment');
+    }
+
+    return uri;
   }
 
   static Future<void> updatePassword(String newPassword) async {

@@ -33,7 +33,13 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
   void _restoreRecoverySession() async {
     if (SupabaseService.currentUser != null) return;
     final uri = Uri.base;
-    if (!uri.fragment.contains('type=recovery')) return;
+    final fragment = uri.fragment;
+    final normalizedFragment = fragment.startsWith('/') ? fragment : '/$fragment';
+    final hasRecoveryToken = fragment.contains('type=recovery') ||
+        uri.queryParameters['type'] == 'recovery' ||
+        normalizedFragment.contains('/password-recovery') ||
+        uri.path == '/password-recovery';
+    if (!hasRecoveryToken) return;
 
     setState(() {
       _isRestoringSession = true;
@@ -49,6 +55,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
               'Could not restore your reset link session. Please request a new password reset email.';
         });
       }
+      debugPrint('[PasswordRecovery] Recovery restoration error: $e');
     } finally {
       if (mounted) {
         setState(() => _isRestoringSession = false);
@@ -75,6 +82,17 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
       setState(() => _isLoading = true);
       try {
         if (SupabaseService.currentUser == null) {
+          debugPrint(
+              '[PasswordRecovery] No current user; retrying recovery session from URL.');
+          try {
+            await SupabaseService.recoverSessionFromUrl(Uri.base);
+          } catch (recoverError) {
+            debugPrint(
+                '[PasswordRecovery] Retry recovery session failed: $recoverError');
+          }
+        }
+
+        if (SupabaseService.currentUser == null) {
           setState(() {
             _errorMessage =
                 'No active reset session was found. Please use the reset link from your email again.';
@@ -83,10 +101,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
         }
 
         debugPrint('[PasswordRecovery] Attempting password reset...');
-        
-        // Update password using the authenticated session
         await SupabaseService.updatePassword(_passwordController.text);
-        
         debugPrint('[PasswordRecovery] Password reset successful');
         if (mounted) {
           setState(() => _isSuccess = true);
