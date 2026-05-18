@@ -388,6 +388,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return AppTheme.error;
       case 'booking_declined':
         return Colors.orange;
+      case 'job_invitation':
+        return AppTheme.primary;
+      case 'invitation_accepted':
+        return AppTheme.success;
+      case 'invitation_declined':
+        return AppTheme.error;
       default:
         return AppTheme.textSecondary;
     }
@@ -403,6 +409,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.cancel_outlined;
       case 'booking_declined':
         return Icons.person_off_outlined;
+      case 'job_invitation':
+        return Icons.mail_outline_rounded;
+      case 'invitation_accepted':
+        return Icons.check_circle_outline;
+      case 'invitation_declined':
+        return Icons.cancel_outlined;
       default:
         return Icons.notifications_outlined;
     }

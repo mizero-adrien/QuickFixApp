@@ -10,6 +10,7 @@ import 'package:quickfix/widgets/artisan_card.dart';
 import 'package:quickfix/widgets/category_chip.dart';
 import 'package:quickfix/widgets/language_selector.dart';
 import 'package:quickfix/screens/job_list_screen.dart';
+import 'package:quickfix/screens/invitations_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isAvailable = true;
   String _selectedBidFilter = 'All';
   int _unreadCount = 0;
+  int _pendingInvitations = 0;
 
   // Covers A2 — arrow function
   List<VerifiedArtisan> get _filteredArtisans {
@@ -66,11 +68,23 @@ class _HomeScreenState extends State<HomeScreen> {
       _isLoading = false;
       _isAvailable = UserSession.currentArtisan?.isAvailable ?? true;
       _loadMyBids();
+      _loadPendingInvitations();
     } else {
       _loadArtisans();
       _loadMyJobs();
     }
     _loadUnreadCount();
+  }
+
+  Future<void> _loadPendingInvitations() async {
+    final artisanId = UserSession.currentArtisan?.id
+        ?? SupabaseService.currentUser?.id;
+    if (artisanId == null) return;
+    try {
+      final invitations = await SupabaseService.getInvitationsForArtisan(artisanId);
+      final pending = invitations.where((j) => j.status == JobStatus.requested).length;
+      if (mounted) setState(() => _pendingInvitations = pending);
+    } catch (_) {}
   }
 
   Future<void> _loadUnreadCount() async {
@@ -212,8 +226,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Artisan tab 0 — available jobs to bid on
+  // Artisan tab 0 — available general jobs to bid on
   Widget _buildArtisanJobsTab() => JobListScreen(onBidPosted: _loadMyBids);
+
+  // Artisan tab 1 — direct invitations from homeowners
+  Widget _buildInvitationsTab() => InvitationsScreen(
+        onStatusChanged: _loadPendingInvitations,
+      );
 
   // Covers A4 — switch for bottom nav
   Widget _getBody() {
@@ -224,10 +243,12 @@ class _HomeScreenState extends State<HomeScreen> {
         case 0:
           return _buildArtisanJobsTab();
         case 1:
-          return _buildArtisanBidsTab();
+          return _buildInvitationsTab();
         case 2:
-          return _buildArtisanProfileTab();
+          return _buildArtisanBidsTab();
         case 3:
+          return _buildArtisanProfileTab();
+        case 4:
           return _buildArtisanSettingsTab();
         default:
           return _buildArtisanJobsTab();
@@ -418,13 +439,19 @@ class _HomeScreenState extends State<HomeScreen> {
               currentIndex: _currentIndex,
               onTap: (index) {
                 setState(() => _currentIndex = index);
-                if (index == 1) _loadMyBids();
+                if (index == 1) _loadPendingInvitations();
+                if (index == 2) _loadMyBids();
               },
               items: [
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.work_outline),
                   activeIcon: const Icon(Icons.work),
                   label: localizations.jobs,
+                ),
+                BottomNavigationBarItem(
+                  icon: _invitationIcon(),
+                  activeIcon: _invitationIcon(active: true),
+                  label: 'Invitations',
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.gavel_outlined),
@@ -1933,7 +1960,36 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Artisan tab 1 — my bids with status filter
+  Widget _invitationIcon({bool active = false}) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(active ? Icons.mail_rounded : Icons.mail_outline_rounded),
+        if (_pendingInvitations > 0)
+          Positioned(
+            right: -6,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                _pendingInvitations > 9 ? '9+' : '$_pendingInvitations',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Artisan tab 2 — my bids with status filter
   Widget _buildArtisanBidsTab() {
     if (_isLoadingBids) {
       return const Center(child: CircularProgressIndicator());
