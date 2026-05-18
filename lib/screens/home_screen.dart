@@ -827,42 +827,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Row(
                         children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: artisan.profileImageUrl != null
-                                ? Image.asset(
-                                    artisan.profileImageUrl!,
-                                    width: 48,
-                                    height: 48,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            CircleAvatar(
-                                      radius: 24,
-                                      backgroundColor: AppTheme.primary
-                                          .withValues(alpha: 0.1),
-                                      child: Text(
-                                        artisan.name[0],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.primary,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor:
-                                        AppTheme.primary.withValues(alpha: 0.1),
-                                    child: Text(
-                                      artisan.name[0],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                          ),
+                          _searchResultAvatar(artisan),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -2222,6 +2187,28 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _searchResultAvatar(VerifiedArtisan artisan) {
+    final url = artisan.profileImageUrl;
+    final fallback = CircleAvatar(
+      radius: 24,
+      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+      child: Text(artisan.name[0],
+          style: const TextStyle(
+              fontWeight: FontWeight.bold, color: AppTheme.primary)),
+    );
+    if (url == null || url.isEmpty) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Image.network(url,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : fallback,
+          errorBuilder: (context, error, stackTrace) => fallback),
     );
   }
 
