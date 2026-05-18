@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:quickfix/data/dummy_data.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/bid.dart';
@@ -33,26 +32,29 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchCategory = 'All';
   bool _isAvailable = true;
   String _selectedBidFilter = 'All';
+  int _unreadCount = 0;
 
   // Covers A2 — arrow function
-  List<VerifiedArtisan> get _filteredArtisans => _selectedCategory == 'All'
-      ? _artisans
-      : _artisans
-          .where((a) => a.trade == _selectedCategory)
-          .toList();
+  List<VerifiedArtisan> get _filteredArtisans {
+    if (_selectedCategory == 'All') return _artisans;
+    final trade = _categoryToTrade[_selectedCategory] ?? _selectedCategory;
+    return _artisans
+        .where((a) => a.trade.toLowerCase() == trade.toLowerCase())
+        .toList();
+  }
 
   List<VerifiedArtisan> get _searchResults {
     final hasQuery = _searchQuery.isNotEmpty;
     final hasFilter = _searchCategory != 'All';
     if (!hasQuery && !hasFilter) return [];
     final q = _searchQuery.toLowerCase();
+    final trade = (_categoryToTrade[_searchCategory] ?? _searchCategory).toLowerCase();
     return _artisans.where((a) {
       final matchesQuery = !hasQuery ||
           a.name.toLowerCase().contains(q) ||
           a.trade.toLowerCase().contains(q) ||
           a.skills.any((s) => s.toLowerCase().contains(q));
-      final matchesCategory =
-          !hasFilter || a.trade.toLowerCase() == _searchCategory.toLowerCase();
+      final matchesCategory = !hasFilter || a.trade.toLowerCase() == trade;
       return matchesQuery && matchesCategory;
     }).toList();
   }
@@ -68,6 +70,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadArtisans();
       _loadMyJobs();
     }
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final count = await SupabaseService.getUnreadCount(userId);
+      if (mounted) setState(() => _unreadCount = count);
+    } catch (_) {}
   }
 
   @override
@@ -85,6 +97,16 @@ class _HomeScreenState extends State<HomeScreen> {
     'Masonry': '🧱',
   };
 
+  // Maps UI category labels → DB trade values stored by artisan setup/edit
+  static const Map<String, String> _categoryToTrade = {
+    'Plumbing': 'Plumber',
+    'Electrical': 'Electrician',
+    'Painting': 'Painter',
+    'Carpentry': 'Carpenter',
+    'Cleaning': 'Cleaner',
+    'Masonry': 'Mason',
+  };
+
   // Covers B5 — async/await Future
   Future<void> _loadArtisans() async {
     if (UserSession.userType == UserType.artisan) {
@@ -95,30 +117,39 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       debugPrint('[Home] Loading artisans from Supabase...');
       final artisans = await SupabaseService.getArtisans();
-      if (artisans.isEmpty) {
-        debugPrint('[Home] Supabase returned empty list — using dummy artisans');
-        if (mounted) setState(() => _artisans = dummyArtisans);
-      } else {
-        debugPrint('[Home] Loaded ${artisans.length} artisans from Supabase');
-        if (mounted) setState(() => _artisans = artisans);
-      }
+      debugPrint('[Home] Loaded ${artisans.length} artisans from Supabase');
+      if (mounted) setState(() => _artisans = artisans);
     } catch (e) {
-      debugPrint('[Home] Supabase error — falling back to dummy artisans: $e');
-      if (mounted) setState(() => _artisans = dummyArtisans);
+      debugPrint('[Home] Failed to load artisans: $e');
+      if (mounted) setState(() => _artisans = []);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _loadMyBids() async {
-    final artisanId = UserSession.currentArtisan?.id;
-    if (artisanId == null) return;
+    final artisanId = UserSession.currentArtisan?.id
+        ?? SupabaseService.currentUser?.id;
+    if (artisanId == null) {
+      debugPrint('[Home] _loadMyBids: artisan ID is null — skipping');
+      return;
+    }
+    debugPrint('[Home] Loading bids for artisan $artisanId...');
     setState(() => _isLoadingBids = true);
     try {
       final bids = await SupabaseService.getBidsByArtisan(artisanId);
-      setState(() => _myBids = bids);
-    } catch (_) {
-      // show empty state on error
+      debugPrint('[Home] Loaded ${bids.length} bids');
+      if (mounted) setState(() => _myBids = bids);
+    } catch (e) {
+      debugPrint('[Home] _loadMyBids failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not load bids: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingBids = false);
     }
@@ -182,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Artisan tab 0 — available jobs to bid on
-  Widget _buildArtisanJobsTab() => const JobListScreen();
+  Widget _buildArtisanJobsTab() => JobListScreen(onBidPosted: _loadMyBids);
 
   // Covers A4 — switch for bottom nav
   Widget _getBody() {
@@ -313,10 +344,35 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           const LanguageSelector(),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined,
-                color: Colors.white),
-            onPressed: () {},
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined,
+                    color: Colors.white),
+                onPressed: () => Navigator.pushNamed(context, '/notifications')
+                    .then((_) => _loadUnreadCount()),
+              ),
+              if (_unreadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      _unreadCount > 9 ? '9+' : '$_unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
@@ -1385,33 +1441,50 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Action row
                 Row(
                   children: [
-                    if (job.status == JobStatus.requested)
+                    if (job.status == JobStatus.requested ||
+                        job.status == JobStatus.quoted)
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.hourglass_empty,
-                                  size: 14, color: Colors.orange),
-                              SizedBox(width: 6),
-                              Text(
-                                'Awaiting bids',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.w600),
+                        child: job.bidCount > 0
+                            ? ElevatedButton.icon(
+                                onPressed: () =>
+                                    _showBidsBottomSheet(context, job),
+                                icon: const Icon(Icons.gavel, size: 14),
+                                label: Text(
+                                    'View Bids (${job.bidCount})'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              )
+                            : Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color:
+                                      Colors.orange.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.hourglass_empty,
+                                        size: 14, color: Colors.orange),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Awaiting bids',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
-                          ),
-                        ),
                       ),
-                    if (job.status == JobStatus.quoted)
+                    if (job.status == JobStatus.booked)
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -1423,11 +1496,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.gavel,
+                              Icon(Icons.verified_user_outlined,
                                   size: 14, color: AppTheme.primary),
                               SizedBox(width: 6),
                               Text(
-                                'Bids received',
+                                'Artisan Booked',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: AppTheme.primary,
@@ -1489,6 +1562,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showBidsBottomSheet(BuildContext context, Job job) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BidsBottomSheet(
+        job: job,
+        onBidAccepted: _loadMyJobs,
       ),
     );
   }
@@ -2082,6 +2167,19 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _artisanAvatar(VerifiedArtisan artisan) {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.2),
+      child: Center(
+        child: Text(
+          artisan.name.isNotEmpty ? artisan.name[0].toUpperCase() : 'A',
+          style: const TextStyle(
+              fontSize: 44, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   Color _bidStatusColor(BidStatus status) {
     switch (status) {
       case BidStatus.pending:
@@ -2096,7 +2194,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // Artisan tab 2 — full profile view
   Widget _buildArtisanProfileTab() {
     final artisan = UserSession.currentArtisan as VerifiedArtisan?;
+    final email = SupabaseService.currentUser?.email ?? '';
+    final isIncomplete = artisan == null || artisan.trade == 'Not set';
 
+    // If artisan is completely null (not even a minimal build), show retry
     if (artisan == null) {
       return Center(
         child: Column(
@@ -2107,18 +2208,25 @@ class _HomeScreenState extends State<HomeScreen> {
             const Text('Profile not loaded',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
-            const Text('Please log out and log in again.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.textSecondary)),
+            Text(email.isNotEmpty ? email : 'Unknown account',
+                style: const TextStyle(color: AppTheme.textSecondary)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
+              onPressed: () async {
+                await SupabaseService.loadUserSession();
+                if (mounted) setState(() {});
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
               onPressed: () async {
                 await SupabaseService.logout();
                 if (mounted) Navigator.pushReplacementNamed(context, '/login');
               },
-              icon: const Icon(Icons.logout),
-              label: const Text('Log Out'),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+              child: const Text('Log Out',
+                  style: TextStyle(color: AppTheme.error)),
             ),
           ],
         ),
@@ -2144,24 +2252,31 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 52,
-                      backgroundColor: Colors.white.withValues(alpha: 0.2),
-                      child: Text(
-                        artisan.name.isNotEmpty ? artisan.name[0] : 'A',
-                        style: const TextStyle(
-                          fontSize: 44,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                    Container(
+                      width: 104,
+                      height: 104,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            width: 3),
+                      ),
+                      child: ClipOval(
+                        child: artisan.profileImageUrl != null
+                            ? Image.network(
+                                artisan.profileImageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stack) => _artisanAvatar(artisan),
+                              )
+                            : _artisanAvatar(artisan),
                       ),
                     ),
                     Positioned(
                       bottom: 0,
                       right: 0,
                       child: Container(
-                        width: 20,
-                        height: 20,
+                        width: 22,
+                        height: 22,
                         decoration: BoxDecoration(
                           color: _isAvailable ? AppTheme.success : Colors.grey,
                           shape: BoxShape.circle,
@@ -2271,6 +2386,42 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+
+          // Incomplete profile banner
+          if (isIncomplete)
+            GestureDetector(
+              onTap: () => Navigator.pushNamed(context, '/artisan-edit-profile')
+                  .then((_) => setState(() {
+                        _isAvailable =
+                            UserSession.currentArtisan?.isAvailable ?? false;
+                      })),
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border:
+                      Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Your artisan profile is incomplete. Tap to set up your trade, skills, and pricing.',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.orange),
+                  ],
+                ),
+              ),
+            ),
 
           // Stats row
           Container(
@@ -2773,6 +2924,392 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(
                 fontSize: 11, color: AppTheme.textSecondary)),
       ],
+    );
+  }
+}
+
+// ── Bids bottom sheet ──────────────────────────────────────────────────────
+
+class _BidsBottomSheet extends StatefulWidget {
+  final Job job;
+  final VoidCallback onBidAccepted;
+
+  const _BidsBottomSheet({
+    required this.job,
+    required this.onBidAccepted,
+  });
+
+  @override
+  State<_BidsBottomSheet> createState() => _BidsBottomSheetState();
+}
+
+class _BidsBottomSheetState extends State<_BidsBottomSheet> {
+  List<Bid> _bids = [];
+  bool _isLoading = true;
+  String? _acceptingBidId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBids();
+  }
+
+  Future<void> _loadBids() async {
+    try {
+      final bids = await SupabaseService.getBidsForJob(widget.job.id);
+      if (mounted) setState(() { _bids = bids; _isLoading = false; });
+    } catch (e) {
+      debugPrint('[BidsSheet] Failed to load bids: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _acceptBid(Bid bid) async {
+    setState(() => _acceptingBidId = bid.id);
+    try {
+      await SupabaseService.acceptBid(
+        bidId: bid.id,
+        jobId: widget.job.id,
+        artisanId: bid.artisanId,
+      );
+      if (mounted) Navigator.pop(context);
+      widget.onBidAccepted();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Bid accepted! ${bid.artisanName ?? 'Artisan'} is booked.'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[BidsSheet] acceptBid failed: $e');
+      if (mounted) {
+        setState(() => _acceptingBidId = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to accept bid: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Bids Received',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        widget.job.title,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.textSecondary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 20),
+          // Body
+          Flexible(
+            child: _isLoading
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : _bids.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.inbox_outlined,
+                                  size: 48, color: Colors.grey),
+                              SizedBox(height: 12),
+                              Text(
+                                'No bids yet',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        shrinkWrap: true,
+                        itemCount: _bids.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final bid = _bids[index];
+                          final isAccepting = _acceptingBidId == bid.id;
+                          final fmt = bid.amountRwf
+                              .toString()
+                              .replaceAllMapped(
+                                  RegExp(r'(\d)(?=(\d{3})+$)'),
+                                  (m) => '${m[1]},');
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: bid.status == BidStatus.accepted
+                                  ? AppTheme.success.withValues(alpha: 0.05)
+                                  : AppTheme.background,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: bid.status == BidStatus.accepted
+                                    ? AppTheme.success.withValues(alpha: 0.4)
+                                    : Colors.grey.shade200,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Artisan row
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: AppTheme.primary
+                                          .withValues(alpha: 0.12),
+                                      child: Text(
+                                        (bid.artisanName?.isNotEmpty == true)
+                                            ? bid.artisanName![0]
+                                            : 'A',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            bid.artisanName ?? 'Artisan',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          ),
+                                          if (bid.artisanTrade != null)
+                                            Text(
+                                              bid.artisanTrade!,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.textSecondary,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (bid.artisanRating != null)
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.star,
+                                              size: 14,
+                                              color: AppTheme.secondary),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            bid.artisanRating!
+                                                .toStringAsFixed(1),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                // Amount
+                                Row(
+                                  children: [
+                                    const Icon(
+                                        Icons.account_balance_wallet_outlined,
+                                        size: 16,
+                                        color: AppTheme.secondary),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '$fmt RWF',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.secondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                // Note
+                                if (bid.note.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    bid.note,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppTheme.textSecondary,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+
+                                const SizedBox(height: 12),
+
+                                // Accept button or status badge
+                                bid.status == BidStatus.accepted
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.success
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.check_circle,
+                                                size: 16,
+                                                color: AppTheme.success),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Accepted',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.success,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : bid.status == BidStatus.rejected
+                                        ? Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: const Center(
+                                              child: Text(
+                                                'Not selected',
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  color: AppTheme.textSecondary,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton(
+                                              onPressed: isAccepting
+                                                  ? null
+                                                  : () => _acceptBid(bid),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    AppTheme.success,
+                                                foregroundColor: Colors.white,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 12),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                              child: isAccepting
+                                                  ? const SizedBox(
+                                                      height: 18,
+                                                      width: 18,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white,
+                                                      ),
+                                                    )
+                                                  : const Text(
+                                                      'Accept This Bid',
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                            ),
+                                          ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 }
