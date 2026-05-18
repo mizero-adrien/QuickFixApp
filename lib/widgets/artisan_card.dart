@@ -26,7 +26,68 @@ class ArtisanCard extends StatelessWidget {
               // Artisan photo and availability badge
               Stack(
                 children: [
+<<<<<<< HEAD
                   _ArtisanAvatar(artisan: artisan),
+=======
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(36),
+                    child: artisan.profileImageUrl != null
+                        ? (artisan.profileImageUrl!.startsWith('http')
+                            ? Image.network(
+                                artisan.profileImageUrl!,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    CircleAvatar(
+                                  radius: 36,
+                                  backgroundColor:
+                                      AppTheme.primary.withValues(alpha: 0.1),
+                                  child: Text(
+                                    artisan.name[0],
+                                    style: const TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Image.asset(
+                                artisan.profileImageUrl!,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    CircleAvatar(
+                                  radius: 36,
+                                  backgroundColor:
+                                      AppTheme.primary.withValues(alpha: 0.1),
+                                  child: Text(
+                                    artisan.name[0],
+                                    style: const TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primary,
+                                    ),
+                                  ),
+                                ),
+                              ))
+                        : CircleAvatar(
+                            radius: 36,
+                            backgroundColor:
+                                AppTheme.primary.withValues(alpha: 0.1),
+                            child: Text(
+                              artisan.name[0],
+                              style: const TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
+                              ),
+                            ),
+                          ),
+                  ),
+>>>>>>> d477498 (password recovery)
                   if (artisan.isAvailable)
                     Positioned(
                       bottom: 0,

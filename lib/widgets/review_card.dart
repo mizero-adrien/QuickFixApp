@@ -69,7 +69,9 @@ class ReviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              review.comment,
+              review.comment.isNotEmpty
+                  ? review.comment
+                  : 'No comment provided.',
               style: const TextStyle(
                 fontSize: 13,
                 color: AppTheme.textPrimary,

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:quickfix/models/artisan.dart';
+import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/review.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
+import 'package:quickfix/widgets/rating_dialog.dart';
 import 'package:quickfix/widgets/review_card.dart';
 
 class ArtisanDetailScreen extends StatefulWidget {
@@ -49,6 +51,69 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
     }
   }
 
+  Future<void> _submitRating(double rating, String comment) async {
+    try {
+      final homeowner = UserSession.currentHomeowner;
+      if (homeowner == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You must be logged in as a homeowner to rate')),
+        );
+        return;
+      }
+
+      final artisan =
+          ModalRoute.of(context)!.settings.arguments as VerifiedArtisan;
+
+      await SupabaseService.addReview(
+        artisanId: artisan.id,
+        rating: rating,
+        comment: comment,
+        reviewerName: homeowner.name,
+      );
+
+      // Show the new review immediately while the list reloads in the background.
+      final newReview = Review(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        artisanId: artisan.id,
+        reviewerName: homeowner.name,
+        rating: rating,
+        comment: comment,
+        createdAt: DateTime.now(),
+      );
+      if (mounted) {
+        setState(() {
+          _reviews.insert(0, newReview);
+        });
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Review submitted successfully!')),
+      );
+
+      // Reload reviews from Supabase after submitting to pick up saved data.
+      _loadReviews(artisan.id);
+    } catch (e) {
+      debugPrint('[ArtisanDetail] Failed to submit rating: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit review: $e')),
+        );
+      }
+    }
+  }
+
+  void _showRatingDialog() {
+    final artisan =
+        ModalRoute.of(context)!.settings.arguments as VerifiedArtisan;
+    showDialog(
+      context: context,
+      builder: (context) => RatingDialog(
+        artisanName: artisan.name,
+        onSubmit: _submitRating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Covers D2 — data received via route arguments
@@ -92,7 +157,76 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
+<<<<<<< HEAD
                   _buildHeroImage(artisan),
+=======
+                  artisan.profileImageUrl != null
+                      ? (artisan.profileImageUrl!.startsWith('http')
+                          ? Image.network(
+                              artisan.profileImageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                color: AppTheme.primary.withValues(alpha: 0.15),
+                                child: Center(
+                                  child: CircleAvatar(
+                                    radius: 64,
+                                    backgroundColor:
+                                        AppTheme.primary.withValues(alpha: 0.2),
+                                    child: Text(
+                                      artisan.name[0],
+                                      style: const TextStyle(
+                                        fontSize: 64,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Image.asset(
+                              artisan.profileImageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                color: AppTheme.primary.withValues(alpha: 0.15),
+                                child: Center(
+                                  child: CircleAvatar(
+                                    radius: 64,
+                                    backgroundColor:
+                                        AppTheme.primary.withValues(alpha: 0.2),
+                                    child: Text(
+                                      artisan.name[0],
+                                      style: const TextStyle(
+                                        fontSize: 64,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ))
+                      : Container(
+                          color: AppTheme.primary.withValues(alpha: 0.15),
+                          child: Center(
+                            child: CircleAvatar(
+                              radius: 64,
+                              backgroundColor:
+                                  AppTheme.primary.withValues(alpha: 0.2),
+                              child: Text(
+                                artisan.name[0],
+                                style: const TextStyle(
+                                  fontSize: 64,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+>>>>>>> d477498 (password recovery)
                   // Dark gradient overlay at bottom
                   Positioned(
                     bottom: 0,
@@ -394,46 +528,100 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Price info — visible to everyone
+            Row(
               children: [
-                const Text(
-                  'Starting from',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                Text(
-                  '${artisan.startingPrice} RWF',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.secondary,
-                  ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Starting from',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    Text(
+                      '${artisan.startingPrice} RWF',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.secondary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: ElevatedButton(
-                onPressed: () => Navigator.pushNamed(
-                  context,
-                  '/booking-form',
-                  arguments: artisan,
-                ),
-                child: const Text(
-                  'Book Now',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+            // Buttons row — Book and Rate buttons for homeowners
+            if (UserSession.userType == UserType.homeowner) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: OutlinedButton(
+                      onPressed: _showRatingDialog,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.star_outline, size: 18),
+                          SizedBox(width: 8),
+                          Text(
+                            'Rate',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pushNamed(
+                        context,
+                        '/booking-form',
+                        arguments: artisan,
+                      ),
+                      child: const Text(
+                        'Book Now',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    '/booking-form',
+                    arguments: artisan,
+                  ),
+                  child: const Text(
+                    'Book Now',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),

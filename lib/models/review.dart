@@ -3,6 +3,7 @@ class Review {
   final String id;
   final String artisanId;
   final String reviewerName;
+  final String? reviewerId;
   final double rating;
   final String comment;
   final DateTime createdAt;
@@ -11,6 +12,7 @@ class Review {
     required this.id,
     required this.artisanId,
     required this.reviewerName,
+    this.reviewerId,
     required this.rating,
     required this.comment,
     required this.createdAt,

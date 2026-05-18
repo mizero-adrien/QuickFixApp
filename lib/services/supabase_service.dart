@@ -84,7 +84,42 @@ class SupabaseService {
   }
 
   static Future<void> sendPasswordReset(String email) async {
-    await _db.auth.resetPasswordForEmail(email);
+    debugPrint('[SupabaseService] Sending password reset to $email');
+    try {
+      final redirectTo = kIsWeb ? Uri.base.origin : null;
+      await _db.auth.resetPasswordForEmail(
+        email,
+        redirectTo: redirectTo,
+      );
+      debugPrint(
+          '[SupabaseService] Password reset email request succeeded; redirectTo=$redirectTo');
+    } catch (e) {
+      debugPrint('[SupabaseService] Password reset failed: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> recoverSessionFromUrl(Uri uri) async {
+    debugPrint('[SupabaseService] Recovering auth session from URL: $uri');
+    try {
+      final response = await _db.auth.getSessionFromUrl(uri);
+      debugPrint(
+          '[SupabaseService] Recovery session restored; redirectType=${response.redirectType}');
+    } catch (e) {
+      debugPrint('[SupabaseService] Failed to recover session from URL: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> updatePassword(String newPassword) async {
+    debugPrint('[SupabaseService] Updating password for current user');
+    try {
+      await _db.auth.updateUser(UserAttributes(password: newPassword));
+      debugPrint('[SupabaseService] Password updated successfully');
+    } catch (e) {
+      debugPrint('[SupabaseService] Password update failed: $e');
+      rethrow;
+    }
   }
 
   // ── Profiles ──────────────────────────────────────────────────────────────
@@ -491,6 +526,27 @@ class SupabaseService {
     return data.map<Review>(_toReview).toList();
   }
 
+  static Future<void> addReview({
+    required String artisanId,
+    required double rating,
+    required String comment,
+    required String reviewerName,
+  }) async {
+    debugPrint('[SupabaseService] Adding review for artisan $artisanId');
+    try {
+      await _db.from('reviews').insert({
+        'artisan_id': artisanId,
+        'rating': rating,
+        'comment': comment,
+        'reviewer_name': reviewerName,
+      });
+      debugPrint('[SupabaseService] Review added successfully');
+    } catch (e) {
+      debugPrint('[SupabaseService] Failed to add review: $e');
+      rethrow;
+    }
+  }
+
   // ── Notifications ─────────────────────────────────────────────────────────
 
   static Future<void> createNotification({
@@ -749,6 +805,7 @@ class SupabaseService {
       id: json['id'] as String,
       artisanId: json['artisan_id'] as String,
       reviewerName: json['reviewer_name'] as String? ?? 'Anonymous',
+      reviewerId: json['reviewer_id'] as String?,
       rating: (json['rating'] as num).toDouble(),
       comment: json['comment'] as String? ?? '',
       createdAt: json['created_at'] != null

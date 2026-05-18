@@ -39,6 +39,27 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _navigateAfterSplash() async {
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
+
+    // Check for password recovery token in URL
+    final uri = Uri.base;
+    final fragment = uri.fragment;
+    
+    if (fragment.contains('type=recovery')) {
+      debugPrint('[SplashScreen] Recovery token detected in URL');
+      try {
+        await SupabaseService.recoverSessionFromUrl(uri);
+      } catch (e) {
+        debugPrint('[SplashScreen] Recovery session restore failed: $e');
+      }
+      if (mounted) {
+        Navigator.pushReplacementNamed(
+          context,
+          '/password-recovery',
+        );
+      }
+      return;
+    }
+
     final user = SupabaseService.currentUser;
     if (user != null) {
       await SupabaseService.loadUserSession();

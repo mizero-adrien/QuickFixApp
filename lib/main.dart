@@ -12,6 +12,7 @@ import 'package:quickfix/screens/home_screen.dart';
 import 'package:quickfix/screens/login_screen.dart';
 import 'package:quickfix/screens/signup_screen.dart';
 import 'package:quickfix/screens/splash_screen.dart';
+import 'package:quickfix/screens/password_recovery_screen.dart';
 import 'package:quickfix/theme/app_theme.dart';
 import 'package:quickfix/screens/job_post_screen.dart';
 import 'package:quickfix/screens/artisan_edit_profile_screen.dart';
@@ -60,6 +61,7 @@ class QuickFixApp extends StatelessWidget {
               '/': (context) => const SplashScreen(),
               '/login': (context) => const LoginScreen(),
               '/signup': (context) => const SignupScreen(),
+              '/password-recovery': (context) => const PasswordRecoveryScreen(),
               '/artisan-setup': (context) => const ArtisanSetupScreen(),
               '/home': (context) => const HomeScreen(),
               '/artisan-detail': (context) => const ArtisanDetailScreen(),
