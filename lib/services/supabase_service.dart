@@ -333,10 +333,29 @@ class SupabaseService {
   static Future<List<Bid>> getBidsForJob(String jobId) async {
     final data = await _db
         .from('bids')
-        .select('*, artisans(trade, rating, profiles(name, phone_number))')
+        .select('*, artisans(trade, rating, profiles(name, phone_number, avatar_url))')
         .eq('job_id', jobId)
         .order('amount_rwf', ascending: true);
     return data.map<Bid>(_toBidWithArtisan).toList();
+  }
+
+  static Future<void> rejectBid({
+    required String bidId,
+    required String artisanId,
+    String? jobTitle,
+  }) async {
+    await _db.from('bids').update({'status': 'rejected'}).eq('id', bidId);
+    try {
+      await createNotification(
+        userId: artisanId,
+        type: 'bid_rejected',
+        title: 'Bid Not Selected',
+        body: 'Your bid for "${jobTitle ?? 'a job'}" was not selected this time.',
+        data: {'bid_id': bidId, 'job_title': jobTitle ?? ''},
+      );
+    } catch (e) {
+      debugPrint('[rejectBid] Could not create notification: $e');
+    }
   }
 
   static Future<void> acceptBid({
@@ -692,6 +711,7 @@ class SupabaseService {
       artisanName: profile?['name'] as String?,
       artisanTrade: artisan?['trade'] as String?,
       artisanRating: (artisan?['rating'] as num?)?.toDouble(),
+      artisanAvatarUrl: profile?['avatar_url'] as String?,
     );
   }
 

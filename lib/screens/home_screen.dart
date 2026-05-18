@@ -1473,8 +1473,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: job.bidCount > 0
                             ? ElevatedButton.icon(
-                                onPressed: () =>
-                                    _showBidsBottomSheet(context, job),
+                                onPressed: () => Navigator.pushNamed(
+                                    context, '/bids-management',
+                                    arguments: job,
+                                  ).then((_) => _loadMyJobs()),
                                 icon: const Icon(Icons.gavel, size: 14),
                                 label: Text(
                                     'View Bids (${job.bidCount})'),

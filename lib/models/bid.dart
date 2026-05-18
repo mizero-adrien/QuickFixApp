@@ -14,6 +14,7 @@ class Bid {
   final String? artisanName;
   final String? artisanTrade;
   final double? artisanRating;
+  final String? artisanAvatarUrl;
 
   const Bid({
     required this.id,
@@ -29,6 +30,7 @@ class Bid {
     this.artisanName,
     this.artisanTrade,
     this.artisanRating,
+    this.artisanAvatarUrl,
   });
 
   String get statusLabel {

@@ -17,6 +17,7 @@ import 'package:quickfix/screens/job_post_screen.dart';
 import 'package:quickfix/screens/artisan_edit_profile_screen.dart';
 import 'package:quickfix/screens/homeowner_edit_profile_screen.dart';
 import 'package:quickfix/screens/notifications_screen.dart';
+import 'package:quickfix/screens/bids_management_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +68,7 @@ class QuickFixApp extends StatelessWidget {
               '/artisan-edit-profile': (context) => const ArtisanEditProfileScreen(),
               '/homeowner-edit-profile': (context) => const HomeownerEditProfileScreen(),
               '/notifications': (context) => const NotificationsScreen(),
+              '/bids-management': (context) => const BidsManagementScreen(),
             },
           ),
         );
