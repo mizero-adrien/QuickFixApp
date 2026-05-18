@@ -55,22 +55,6 @@ class QuickFixApp extends StatelessWidget {
     return ValueListenableBuilder<Locale>(
       valueListenable: LocaleProvider.locale,
       builder: (_, locale, __) {
-        final routes = {
-          '/': (context) => const SplashScreen(),
-          '/login': (context) => const LoginScreen(),
-          '/signup': (context) => const SignupScreen(),
-          '/password-recovery': (context) => const PasswordRecoveryScreen(),
-          '/artisan-setup': (context) => const ArtisanSetupScreen(),
-          '/home': (context) => const HomeScreen(),
-          '/artisan-detail': (context) => const ArtisanDetailScreen(),
-          '/booking-form': (context) => const BookingFormScreen(),
-          '/post-job': (context) => const JobPostScreen(),
-          '/artisan-edit-profile': (context) => const ArtisanEditProfileScreen(),
-          '/homeowner-edit-profile': (context) => const HomeownerEditProfileScreen(),
-          '/notifications': (context) => const NotificationsScreen(),
-          '/bids-management': (context) => const BidsManagementScreen(),
-        };
-
         return AppLocalizationsProvider(
           localizations: AppLocalizations(locale),
           child: MaterialApp(
@@ -124,18 +108,4 @@ class QuickFixApp extends StatelessWidget {
     }
   }
 
-  String _resolveInitialRoute(Set<String> availableRoutes) {
-    final uri = Uri.base;
-    if (uri.fragment.isNotEmpty) {
-      final routeSegment = uri.fragment.split('?').first;
-      final routePath = routeSegment.startsWith('/') ? routeSegment : '/$routeSegment';
-      if (availableRoutes.contains(routePath)) {
-        return routePath;
-      }
-    }
-    if (uri.path.isNotEmpty && availableRoutes.contains(uri.path)) {
-      return uri.path;
-    }
-    return '/';
-  }
 }

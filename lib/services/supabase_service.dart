@@ -87,13 +87,9 @@ class SupabaseService {
   static Future<void> sendPasswordReset(String email) async {
     debugPrint('[SupabaseService] Sending password reset to $email');
     try {
-<<<<<<< HEAD
       final redirectTo = kIsWeb
           ? Uri.base.origin
           : 'com.quickfix.quickfix://login-callback';
-=======
-      final redirectTo = kIsWeb ? _buildPasswordRecoveryRedirectUrl() : null;
->>>>>>> c2e46b9 (resoving resert-password page)
       await _db.auth.resetPasswordForEmail(
         email,
         redirectTo: redirectTo,
