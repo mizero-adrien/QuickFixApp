@@ -5,7 +5,9 @@ import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
 class JobListScreen extends StatefulWidget {
-  const JobListScreen({super.key});
+  final VoidCallback? onBidPosted;
+
+  const JobListScreen({super.key, this.onBidPosted});
 
   @override
   State<JobListScreen> createState() => _JobListScreenState();
@@ -183,7 +185,10 @@ class _JobListScreenState extends State<JobListScreen> {
                       return _JobCard(
                         job: job,
                         statusColor: _statusColor(job.status),
-                        onBidSubmitted: _loadJobs,
+                        onBidSubmitted: () {
+                          _loadJobs();
+                          widget.onBidPosted?.call();
+                        },
                       );
                     },
                   ),
@@ -357,175 +362,191 @@ class _JobCard extends StatelessWidget {
   }
 
   void _showBidDialog(BuildContext context, Job job) {
-    final bidController = TextEditingController();
-    final noteController = TextEditingController();
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BidSheet(job: job, onBidSubmitted: onBidSubmitted),
+    );
+  }
+}
+
+// ── Bid sheet ──────────────────────────────────────────────────────────────
+
+class _BidSheet extends StatefulWidget {
+  final Job job;
+  final VoidCallback onBidSubmitted;
+
+  const _BidSheet({required this.job, required this.onBidSubmitted});
+
+  @override
+  State<_BidSheet> createState() => _BidSheetState();
+}
+
+class _BidSheetState extends State<_BidSheet> {
+  final _bidController = TextEditingController();
+  final _noteController = TextEditingController();
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _bidController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final amountText = _bidController.text.trim();
+    if (amountText.isEmpty) {
+      _snack('Please enter your bid amount', error: true);
+      return;
+    }
+    final amount = int.tryParse(amountText);
+    if (amount == null || amount < 1000) {
+      _snack('Minimum bid is 1,000 RWF', error: true);
+      return;
+    }
+
+    // Use currentArtisan id first, fall back to raw auth user id.
+    // This handles the case where the artisan row is missing but the
+    // user is authenticated.
+    final artisanId = UserSession.currentArtisan?.id
+        ?? SupabaseService.currentUser?.id;
+    if (artisanId == null) {
+      _snack('Not logged in — please log out and log in again.', error: true);
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      debugPrint('[BidSheet] Posting bid for job ${widget.job.id} by artisan $artisanId');
+      await SupabaseService.postBid(
+        jobId: widget.job.id,
+        artisanId: artisanId,
+        amountRwf: amount,
+        note: _noteController.text.trim(),
+        artisanName: UserSession.currentArtisan?.name,
+      );
+      debugPrint('[BidSheet] Bid posted successfully');
+      if (mounted) Navigator.pop(context);
+      widget.onBidSubmitted();
+      if (mounted) _snack('Bid sent successfully!', error: false);
+    } catch (e) {
+      debugPrint('[BidSheet] postBid failed: $e');
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        _snack('Failed to send bid: $e', error: true);
+      }
+    }
+  }
+
+  void _snack(String message, {required bool error}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: error ? AppTheme.error : AppTheme.success,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          bool isSubmitting = false;
-
-          Future<void> submit() async {
-            final amountText = bidController.text.trim();
-            if (amountText.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please enter your bid amount'),
-                  backgroundColor: AppTheme.error,
-                ),
-              );
-              return;
-            }
-            final amount = int.tryParse(amountText);
-            if (amount == null || amount < 1000) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Minimum bid is 1,000 RWF'),
-                  backgroundColor: AppTheme.error,
-                ),
-              );
-              return;
-            }
-
-            final artisanId = UserSession.currentArtisan?.id;
-            if (artisanId == null) return;
-
-            setModalState(() => isSubmitting = true);
-            try {
-              await SupabaseService.postBid(
-                jobId: job.id,
-                artisanId: artisanId,
-                amountRwf: amount,
-                note: noteController.text.trim(),
-              );
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Bid sent successfully!'),
-                    backgroundColor: AppTheme.success,
-                  ),
-                );
-              }
-              onBidSubmitted();
-            } catch (e) {
-              setModalState(() => isSubmitting = false);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to send bid: $e'),
-                    backgroundColor: AppTheme.error,
-                  ),
-                );
-              }
-            }
-          }
-
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Send Your Bid',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  job.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 20),
 
-                const Text(
-                  'Your Price (RWF)',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: bidController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: 'e.g. 8000',
-                    suffixText: 'RWF',
-                    filled: true,
-                    fillColor: AppTheme.background,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                const Text(
-                  'Note to Homeowner',
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: noteController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText:
-                        'Explain why you are the right person for this job...',
-                    filled: true,
-                    fillColor: AppTheme.background,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                isSubmitting
-                    ? const Center(child: CircularProgressIndicator())
-                    : ElevatedButton(
-                        onPressed: submit,
-                        child: const Text(
-                          'Submit Bid',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-              ],
+          const Text(
+            'Send Your Bid',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            widget.job.title,
+            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 20),
+
+          const Text('Your Price (RWF)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _bidController,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: 'e.g. 8000',
+              suffixText: 'RWF',
+              filled: true,
+              fillColor: AppTheme.background,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          const Text('Note to Homeowner',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _noteController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Explain why you are the right person for this job...',
+              filled: true,
+              fillColor: AppTheme.background,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          SizedBox(
+            width: double.infinity,
+            child: _isSubmitting
+                ? const Center(child: CircularProgressIndicator())
+                : ElevatedButton(
+                    onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text(
+                      'Submit Bid',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }

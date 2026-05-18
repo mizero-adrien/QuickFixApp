@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/services/supabase_service.dart';
@@ -12,66 +14,49 @@ class ArtisanEditProfileScreen extends StatefulWidget {
       _ArtisanEditProfileScreenState();
 }
 
-class _ArtisanEditProfileScreenState
-    extends State<ArtisanEditProfileScreen> {
+class _ArtisanEditProfileScreenState extends State<ArtisanEditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers — pre-filled with current artisan data
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _aboutController;
   late TextEditingController _priceController;
   late TextEditingController _experienceController;
 
-  // Covers A1 — typed variables
   late String _selectedTrade;
   late Set<String> _selectedSkills;
   late String _selectedLocation;
+
+  // Image state
+  Uint8List? _imageBytes;
+  String? _currentAvatarUrl;
+  bool _isUploadingImage = false;
   bool _isLoading = false;
 
-  // Covers A3 — Map
   final Map<String, List<String>> _tradeSkills = {
     'Plumber': [
-      'Pipe Repair',
-      'Leak Detection',
-      'Water Heater',
-      'Drain Cleaning',
-      'Bathroom Fitting',
+      'Pipe Repair', 'Leak Detection', 'Water Heater',
+      'Drain Cleaning', 'Bathroom Fitting',
     ],
     'Electrician': [
-      'Wiring',
-      'Solar Installation',
-      'Circuit Breaker',
-      'Lighting',
-      'Generator Repair',
+      'Wiring', 'Solar Installation', 'Circuit Breaker',
+      'Lighting', 'Generator Repair',
     ],
     'Painter': [
-      'Interior Painting',
-      'Exterior Painting',
-      'Wall Texturing',
-      'Waterproofing',
-      'Colour Consultation',
+      'Interior Painting', 'Exterior Painting', 'Wall Texturing',
+      'Waterproofing', 'Colour Consultation',
     ],
     'Carpenter': [
-      'Furniture Repair',
-      'Door Fitting',
-      'Cabinets',
-      'Roofing',
-      'Custom Woodwork',
+      'Furniture Repair', 'Door Fitting', 'Cabinets',
+      'Roofing', 'Custom Woodwork',
     ],
     'Cleaner': [
-      'Deep Cleaning',
-      'Post-Construction',
-      'Office Cleaning',
-      'Carpet Cleaning',
-      'Window Cleaning',
+      'Deep Cleaning', 'Post-Construction', 'Office Cleaning',
+      'Carpet Cleaning', 'Window Cleaning',
     ],
     'Mason': [
-      'Bricklaying',
-      'Plastering',
-      'Tiling',
-      'Foundation Work',
-      'Wall Construction',
+      'Bricklaying', 'Plastering', 'Tiling',
+      'Foundation Work', 'Wall Construction',
     ],
   };
 
@@ -84,21 +69,27 @@ class _ArtisanEditProfileScreenState
   @override
   void initState() {
     super.initState();
-    // Pre-fill with current artisan data
     final artisan = UserSession.currentArtisan;
-    _nameController =
-        TextEditingController(text: artisan?.name ?? '');
-    _phoneController =
-        TextEditingController(text: artisan?.phoneNumber ?? '');
-    _aboutController =
-        TextEditingController(text: artisan?.about ?? '');
+    _nameController = TextEditingController(text: artisan?.name ?? '');
+    _phoneController = TextEditingController(text: artisan?.phoneNumber ?? '');
+    _aboutController = TextEditingController(text: artisan?.about ?? '');
     _priceController = TextEditingController(
-        text: artisan?.startingPrice.toString() ?? '');
+        text: artisan != null && artisan.startingPrice > 0
+            ? artisan.startingPrice.toString()
+            : '');
     _experienceController = TextEditingController(
-        text: artisan?.yearsOfExperience.toString() ?? '');
-    _selectedTrade = artisan?.trade ?? 'Plumber';
+        text: artisan != null && artisan.yearsOfExperience > 0
+            ? artisan.yearsOfExperience.toString()
+            : '');
+    _selectedTrade = _normalizedTrade(artisan?.trade);
     _selectedSkills = Set<String>.from(artisan?.skills ?? []);
     _selectedLocation = _normalizeLocation(artisan?.location);
+    _currentAvatarUrl = artisan?.profileImageUrl;
+  }
+
+  String _normalizedTrade(String? trade) {
+    if (trade == null || trade == 'Not set' || trade.isEmpty) return 'Plumber';
+    return _tradeSkills.containsKey(trade) ? trade : 'Plumber';
   }
 
   String _districtFromLocation(String location) {
@@ -109,30 +100,11 @@ class _ArtisanEditProfileScreenState
   }
 
   String _normalizeLocation(String? location) {
-    if (location == null || location.isEmpty) {
-      return _locations.first;
-    }
-
-    final existing = _locations.firstWhere(
-      (loc) => loc.toLowerCase() == location.toLowerCase(),
-      orElse: () => '',
+    if (location == null || location.isEmpty) return _locations.first;
+    return _locations.firstWhere(
+      (l) => l.toLowerCase().contains(location.toLowerCase().split(',').first),
+      orElse: () => _locations.first,
     );
-
-    if (existing.isNotEmpty) {
-      return existing;
-    }
-
-    final partialMatch = _locations.firstWhere(
-      (loc) => loc.toLowerCase().contains(location.toLowerCase()),
-      orElse: () => '',
-    );
-
-    if (partialMatch.isNotEmpty) {
-      return partialMatch;
-    }
-
-    _locations.insert(0, location);
-    return location;
   }
 
   @override
@@ -145,7 +117,126 @@ class _ArtisanEditProfileScreenState
     super.dispose();
   }
 
-  // Covers B5 — async/await
+  // ── Image picking ─────────────────────────────────────────────────────────
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      setState(() => _imageBytes = bytes);
+    } catch (e) {
+      debugPrint('[EditProfile] pickImage failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not pick image: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showImageSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.camera_alt_outlined,
+                      color: AppTheme.primary),
+                ),
+                title: const Text('Take a Photo'),
+                subtitle: const Text('Use your camera'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.photo_library_outlined,
+                      color: AppTheme.secondary),
+                ),
+                title: const Text('Choose from Gallery'),
+                subtitle: const Text('Pick an existing photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              if (_currentAvatarUrl != null || _imageBytes != null)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.delete_outline,
+                        color: AppTheme.error),
+                  ),
+                  title: const Text('Remove Photo',
+                      style: TextStyle(color: AppTheme.error)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _imageBytes = null;
+                      _currentAvatarUrl = null;
+                    });
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedSkills.isEmpty) {
@@ -161,22 +252,42 @@ class _ArtisanEditProfileScreenState
     setState(() => _isLoading = true);
     try {
       final currentArtisan = UserSession.currentArtisan as VerifiedArtisan?;
-      if (currentArtisan == null) {
-        throw Exception('Session expired — please log in again.');
-      }
+      final userId = currentArtisan?.id ?? SupabaseService.currentUser?.id;
+      if (userId == null) throw Exception('Not logged in.');
 
       final name = _nameController.text.trim();
       final phone = _phoneController.text.trim();
       final district = _districtFromLocation(_selectedLocation);
       final yearsOfExperience =
-          int.tryParse(_experienceController.text.trim()) ??
-              currentArtisan.yearsOfExperience;
+          int.tryParse(_experienceController.text.trim()) ?? 0;
       final startingPrice =
-          int.tryParse(_priceController.text.trim()) ??
-              currentArtisan.startingPrice;
+          int.tryParse(_priceController.text.trim()) ?? 0;
+
+      // Upload image if a new one was picked
+      String? newAvatarUrl = _currentAvatarUrl;
+      if (_imageBytes != null) {
+        setState(() => _isUploadingImage = true);
+        try {
+          newAvatarUrl = await SupabaseService.uploadArtisanAvatar(
+              userId, _imageBytes!);
+        } catch (e) {
+          debugPrint('[EditProfile] Avatar upload failed: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Photo upload failed: $e'),
+                backgroundColor: AppTheme.error,
+              ),
+            );
+          }
+          newAvatarUrl = _currentAvatarUrl; // keep old URL on failure
+        } finally {
+          if (mounted) setState(() => _isUploadingImage = false);
+        }
+      }
 
       await SupabaseService.updateArtisanProfile(
-        id: currentArtisan.id,
+        id: userId,
         name: name,
         phoneNumber: phone,
         district: district,
@@ -185,26 +296,27 @@ class _ArtisanEditProfileScreenState
         yearsOfExperience: yearsOfExperience,
         startingPrice: startingPrice,
         about: _aboutController.text.trim(),
+        avatarUrl: newAvatarUrl,
       );
 
-      // Update local session so UI reflects changes immediately
+      // Update local session immediately
       UserSession.loginAsArtisan(VerifiedArtisan(
-        id: currentArtisan.id,
+        id: userId,
         name: name,
         phoneNumber: phone,
         location: _selectedLocation,
-        rating: currentArtisan.rating,
-        totalReviews: currentArtisan.totalReviews,
+        rating: currentArtisan?.rating ?? 0.0,
+        totalReviews: currentArtisan?.totalReviews ?? 0,
         trade: _selectedTrade,
         skills: _selectedSkills.toList(),
         yearsOfExperience: yearsOfExperience,
-        completedJobs: currentArtisan.completedJobs,
+        completedJobs: currentArtisan?.completedJobs ?? 0,
         about: _aboutController.text.trim(),
         startingPrice: startingPrice,
-        isAvailable: currentArtisan.isAvailable,
-        verificationId: currentArtisan.verificationId,
-        verifiedOn: currentArtisan.verifiedOn,
-        profileImageUrl: currentArtisan.profileImageUrl,
+        isAvailable: currentArtisan?.isAvailable ?? false,
+        verificationId: currentArtisan?.verificationId ?? 'VRF-000',
+        verifiedOn: currentArtisan?.verifiedOn ?? DateTime.now(),
+        profileImageUrl: newAvatarUrl,
       ));
 
       if (mounted) {
@@ -231,332 +343,355 @@ class _ArtisanEditProfileScreenState
     }
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Edit Profile',
+            style: TextStyle(color: Colors.white)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : _saveProfile,
-            child: const Text(
-              'Save',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            onPressed: (_isLoading || _isUploadingImage) ? null : _saveProfile,
+            child: const Text('Save',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
           ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Profile photo section
+              // ── Avatar ──────────────────────────────────────────────────
               Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 52,
-                      backgroundColor:
-                          AppTheme.primary.withValues(alpha: 0.1),
-                      child: Text(
-                        _nameController.text.isNotEmpty
-                            ? _nameController.text[0]
-                            : 'A',
-                        style: const TextStyle(
-                          fontSize: 44,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primary,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.primary,
+                child: GestureDetector(
+                  onTap: _showImageSourceSheet,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 108,
+                        height: 108,
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          border: Border.all(
+                              color: AppTheme.primary.withValues(alpha: 0.3),
+                              width: 3),
                         ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          color: Colors.white,
-                          size: 18,
+                        child: ClipOval(
+                          child: _isUploadingImage
+                              ? Container(
+                                  color: AppTheme.primary.withValues(alpha: 0.1),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                )
+                              : _imageBytes != null
+                                  ? Image.memory(
+                                      _imageBytes!,
+                                      fit: BoxFit.cover,
+                                      width: 108,
+                                      height: 108,
+                                    )
+                                  : _currentAvatarUrl != null
+                                      ? Image.network(
+                                          _currentAvatarUrl!,
+                                          fit: BoxFit.cover,
+                                          width: 108,
+                                          height: 108,
+                                          errorBuilder:
+                                              (context, error, stack) =>
+                                                  _avatarInitial(),
+                                        )
+                                      : _avatarInitial(),
                         ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.camera_alt,
+                              color: Colors.white, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               const Center(
-                child: Text(
-                  'Tap to change photo',
+                child: Text('Tap to change photo',
+                    style: TextStyle(
+                        fontSize: 13, color: AppTheme.textSecondary)),
+              ),
+
+              const SizedBox(height: 28),
+
+              // ── Basic info ───────────────────────────────────────────────
+              _buildSection('Basic Information', [
+                _buildLabel('Full Name'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Jean Pierre Habimana',
+                    prefixIcon: Icon(Icons.person_outlined),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please enter your full name';
+                    }
+                    if (v.trim().length < 3) {
+                      return 'Name must be at least 3 characters';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+                _buildLabel('Phone Number'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    hintText: '+250 781234567',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please enter your phone number';
+                    }
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+                _buildLabel('Location'),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedLocation,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.location_on_outlined),
+                  ),
+                  items: _locations
+                      .map((l) => DropdownMenuItem(value: l, child: Text(l)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedLocation = v!),
+                ),
+              ]),
+
+              const SizedBox(height: 20),
+
+              // ── Trade & skills ───────────────────────────────────────────
+              _buildSection('Trade & Skills', [
+                _buildLabel('Your Trade'),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _selectedTrade,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.construction_outlined),
+                  ),
+                  items: _tradeSkills.keys
+                      .map((t) =>
+                          DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (v) => setState(() {
+                    _selectedTrade = v!;
+                    _selectedSkills.clear();
+                  }),
+                ),
+
+                const SizedBox(height: 16),
+                _buildLabel('Skills'),
+                const SizedBox(height: 8),
+                Text(
+                  'Select all that apply',
                   style: TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.textSecondary,
-                  ),
+                      fontSize: 12, color: Colors.grey.shade500),
                 ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Full name
-              _buildLabel('Full Name'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Jean Pierre Habimana',
-                  prefixIcon: Icon(Icons.person_outlined),
-                ),
-                onChanged: (value) => setState(() {}),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your full name';
-                  }
-                  if (value.trim().length < 3) {
-                    return 'Name must be at least 3 characters';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Phone number
-              _buildLabel('Phone Number'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  hintText: '+250 781234567',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your phone number';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              // Location
-              _buildLabel('Location'),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedLocation,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: Colors.grey.shade300),
-                  ),
-                ),
-                items: _locations
-                    .map(
-                      (loc) => DropdownMenuItem(
-                        value: loc,
-                        child: Text(loc),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) =>
-                    setState(() => _selectedLocation = value!),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Trade
-              _buildLabel('Your Trade'),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _selectedTrade,
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: Colors.grey.shade300),
-                  ),
-                ),
-                items: _tradeSkills.keys
-                    .map(
-                      (trade) => DropdownMenuItem(
-                        value: trade,
-                        child: Text(trade),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() {
-                  _selectedTrade = value!;
-                  _selectedSkills.clear();
-                }),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Skills
-              _buildLabel('Skills'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _tradeSkills[_selectedTrade]!
-                    .map(
-                      (skill) => GestureDetector(
-                        onTap: () => setState(() {
-                          if (_selectedSkills.contains(skill)) {
-                            _selectedSkills.remove(skill);
-                          } else {
-                            _selectedSkills.add(skill);
-                          }
-                        }),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: _selectedSkills.contains(skill)
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _tradeSkills[_selectedTrade]!.map((skill) {
+                    final selected = _selectedSkills.contains(skill);
+                    return GestureDetector(
+                      onTap: () => setState(() => selected
+                          ? _selectedSkills.remove(skill)
+                          : _selectedSkills.add(skill)),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: selected ? AppTheme.primary : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: selected
                                 ? AppTheme.primary
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: _selectedSkills.contains(skill)
-                                  ? AppTheme.primary
-                                  : Colors.grey.shade300,
-                            ),
+                                : Colors.grey.shade300,
                           ),
-                          child: Text(
-                            skill,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _selectedSkills.contains(skill)
-                                  ? Colors.white
-                                  : AppTheme.textPrimary,
+                          boxShadow: selected
+                              ? [
+                                  BoxShadow(
+                                    color: AppTheme.primary
+                                        .withValues(alpha: 0.2),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  )
+                                ]
+                              : [],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (selected) ...[
+                              const Icon(Icons.check,
+                                  size: 14, color: Colors.white),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              skill,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: selected
+                                    ? Colors.white
+                                    : AppTheme.textPrimary,
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                    )
-                    .toList(),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Years of experience
-              _buildLabel('Years of Experience'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _experienceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. 5',
-                  prefixIcon: Icon(Icons.work_outline),
-                  suffixText: 'years',
+                    );
+                  }).toList(),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter years of experience';
-                  }
-                  final years = int.tryParse(value.trim());
-                  if (years == null || years < 0) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
+              ]),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-              // Starting price
-              _buildLabel('Starting Price (RWF)'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  hintText: 'e.g. 5000',
-                  prefixIcon:
-                      Icon(Icons.account_balance_wallet_outlined),
-                  suffixText: 'RWF',
+              // ── Experience & pricing ─────────────────────────────────────
+              _buildSection('Experience & Pricing', [
+                _buildLabel('Years of Experience'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _experienceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. 5',
+                    prefixIcon: Icon(Icons.work_outline),
+                    suffixText: 'years',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please enter years of experience';
+                    }
+                    if (int.tryParse(v.trim()) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your starting price';
-                  }
-                  final price = int.tryParse(value.trim());
-                  if (price == null) {
-                    return 'Please enter a valid amount';
-                  }
-                  if (price < 1000) {
-                    return 'Minimum starting price is 1,000 RWF';
-                  }
-                  return null;
-                },
-              ),
 
-              const SizedBox(height: 16),
-
-              // About
-              _buildLabel('About You'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _aboutController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText:
-                      'Describe your experience and work style...',
-                  alignLabelWithHint: true,
+                const SizedBox(height: 16),
+                _buildLabel('Starting Price (RWF)'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. 5000',
+                    prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                    suffixText: 'RWF',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please enter your starting price';
+                    }
+                    final p = int.tryParse(v.trim());
+                    if (p == null) return 'Enter a valid amount';
+                    if (p < 1000) return 'Minimum is 1,000 RWF';
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please write something about yourself';
-                  }
-                  if (value.trim().length < 30) {
-                    return 'Please write at least 30 characters';
-                  }
-                  return null;
-                },
-              ),
+              ]),
+
+              const SizedBox(height: 20),
+
+              // ── About ────────────────────────────────────────────────────
+              _buildSection('About You', [
+                TextFormField(
+                  controller: _aboutController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Describe your experience, work style, and what makes you stand out...',
+                    alignLabelWithHint: true,
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please write something about yourself';
+                    }
+                    if (v.trim().length < 20) {
+                      return 'Please write at least 20 characters';
+                    }
+                    return null;
+                  },
+                ),
+              ]),
 
               const SizedBox(height: 32),
 
               // Save button
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _saveProfile,
-                      child: const Text(
-                        'Save Changes',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+              SizedBox(
+                width: double.infinity,
+                child: (_isLoading || _isUploadingImage)
+                    ? Column(
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 8),
+                          Text(
+                            _isUploadingImage
+                                ? 'Uploading photo...'
+                                : 'Saving profile...',
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      )
+                    : ElevatedButton(
+                        onPressed: _saveProfile,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text(
+                          'Save Changes',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ),
-                    ),
+              ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -564,12 +699,59 @@ class _ArtisanEditProfileScreenState
     );
   }
 
+  Widget _avatarInitial() {
+    final name = _nameController.text;
+    return Container(
+      color: AppTheme.primary.withValues(alpha: 0.1),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'A',
+          style: const TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.primary),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   Widget _buildLabel(String text) => Text(
         text,
         style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppTheme.textPrimary,
-        ),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textSecondary),
       );
 }

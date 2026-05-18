@@ -141,8 +141,9 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
         actions: [
           ElevatedButton(
             onPressed: () {
+              // Pop the dialog, then pop all screens until home (first route)
               Navigator.pop(context);
-              Navigator.popUntil(context, NamedRoutes.isHome);
+              Navigator.popUntil(context, (route) => route.isFirst);
             },
             child: const Text('Back to Home'),
           ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:quickfix/data/dummy_data.dart';
 import 'package:quickfix/models/artisan.dart';
 import 'package:quickfix/models/review.dart';
 import 'package:quickfix/services/supabase_service.dart';
@@ -40,10 +39,10 @@ class _ArtisanDetailScreenState extends State<ArtisanDetailScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[ArtisanDetail] Failed to load reviews: $e — using dummy fallback');
+      debugPrint('[ArtisanDetail] Failed to load reviews: $e');
       if (mounted) {
         setState(() {
-          _reviews = dummyReviews.where((r) => r.artisanId == artisanId).toList();
+          _reviews = [];
           _isLoadingReviews = false;
         });
       }
