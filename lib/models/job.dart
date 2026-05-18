@@ -32,6 +32,7 @@ class Job {
   final DateTime requestedAt;
   final String? assignedArtisanId;
   final String? photoUrl;
+  final int bidCount;
 
   const Job({
     required this.id,
@@ -45,6 +46,7 @@ class Job {
     this.budgetRwf,
     this.assignedArtisanId,
     this.photoUrl,
+    this.bidCount = 0,
   });
 
   // Returns human readable status — covers A4

@@ -11,6 +11,9 @@ class Bid {
   final String? jobTitle;
   final String? jobCategory;
   final String? jobLocation;
+  final String? artisanName;
+  final String? artisanTrade;
+  final double? artisanRating;
 
   const Bid({
     required this.id,
@@ -23,6 +26,9 @@ class Bid {
     this.jobTitle,
     this.jobCategory,
     this.jobLocation,
+    this.artisanName,
+    this.artisanTrade,
+    this.artisanRating,
   });
 
   String get statusLabel {
