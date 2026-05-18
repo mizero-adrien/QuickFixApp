@@ -20,6 +20,8 @@ import 'package:quickfix/screens/homeowner_edit_profile_screen.dart';
 import 'package:quickfix/screens/notifications_screen.dart';
 import 'package:quickfix/screens/bids_management_screen.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
@@ -29,6 +31,15 @@ void main() async {
   // Restore session before first frame so screens see correct UserSession
   await SupabaseService.loadUserSession();
   debugPrint('[Main] Session restore complete. UserType: ${UserSession.userType}');
+
+  // Listen for password-recovery deep link event on mobile
+  Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    if (data.event == AuthChangeEvent.passwordRecovery) {
+      debugPrint('[Main] passwordRecovery event — navigating to /password-recovery');
+      navigatorKey.currentState?.pushReplacementNamed('/password-recovery');
+    }
+  });
+
   runApp(const QuickFixApp());
 }
 
@@ -43,6 +54,7 @@ class QuickFixApp extends StatelessWidget {
         return AppLocalizationsProvider(
           localizations: AppLocalizations(locale),
           child: MaterialApp(
+            navigatorKey: navigatorKey,
             title: 'QuickFix',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.theme,
