@@ -26,43 +26,7 @@ class ArtisanCard extends StatelessWidget {
               // Artisan photo and availability badge
               Stack(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(36),
-                    child: artisan.profileImageUrl != null
-                        ? Image.asset(
-                            artisan.profileImageUrl!,
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                CircleAvatar(
-                              radius: 36,
-                              backgroundColor:
-                                  AppTheme.primary.withValues(alpha: 0.1),
-                              child: Text(
-                                artisan.name[0],
-                                style: const TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primary,
-                                ),
-                              ),
-                            ),
-                          )
-                        : CircleAvatar(
-                            radius: 36,
-                            backgroundColor:
-                                AppTheme.primary.withValues(alpha: 0.1),
-                            child: Text(
-                              artisan.name[0],
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                          ),
-                  ),
+                  _ArtisanAvatar(artisan: artisan),
                   if (artisan.isAvailable)
                     Positioned(
                       bottom: 0,
@@ -156,6 +120,43 @@ class ArtisanCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ArtisanAvatar extends StatelessWidget {
+  final Artisan artisan;
+  const _ArtisanAvatar({required this.artisan});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = artisan.profileImageUrl;
+    final fallback = CircleAvatar(
+      radius: 36,
+      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+      child: Text(
+        artisan.name[0],
+        style: const TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.primary,
+        ),
+      ),
+    );
+
+    if (url == null || url.isEmpty) return fallback;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(36),
+      child: Image.network(
+        url,
+        width: 72,
+        height: 72,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : fallback,
+        errorBuilder: (context, error, stackTrace) => fallback,
       ),
     );
   }
