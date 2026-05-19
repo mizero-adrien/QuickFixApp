@@ -22,6 +22,7 @@ import 'package:quickfix/screens/bids_management_screen.dart';
 import 'package:quickfix/screens/job_status_screen.dart';
 import 'package:quickfix/screens/job_detail_screen.dart';
 import 'package:quickfix/screens/chat_screen.dart';
+import 'package:quickfix/screens/assistant_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -89,6 +90,7 @@ class QuickFixApp extends StatelessWidget {
               '/job-status': (context) => const JobStatusScreen(),
               '/job-detail': (context) => const JobDetailScreen(),
               '/chat': (context) => const ChatScreen(),
+              '/assistant': (context) => const AssistantScreen(),
             },
           ),
         );

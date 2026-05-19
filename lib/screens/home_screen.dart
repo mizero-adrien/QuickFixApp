@@ -477,6 +477,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           const LanguageSelector(),
+          IconButton(
+            icon: const Icon(Icons.smart_toy_outlined, color: Colors.white),
+            tooltip: 'QuickFix Assistant',
+            onPressed: () => Navigator.pushNamed(context, '/assistant'),
+          ),
           Stack(
             children: [
               IconButton(
