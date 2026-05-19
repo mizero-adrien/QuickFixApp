@@ -13,6 +13,7 @@ import 'package:quickfix/widgets/language_selector.dart';
 import 'package:quickfix/screens/job_list_screen.dart';
 import 'package:quickfix/screens/invitations_screen.dart';
 import 'package:quickfix/screens/conversations_screen.dart';
+import 'package:quickfix/widgets/review_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,12 +34,19 @@ class _HomeScreenState extends State<HomeScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   String _searchCategory = 'All';
+  String _filterDistrict = 'All';
+  double _filterMinRating = 0.0;
+  int? _filterMaxPrice;
+  bool _filterAvailableOnly = false;
+  String _sortBy = 'rating';
   bool _isAvailable = true;
   String _selectedBidFilter = 'All';
   int _unreadCount = 0;
+  int _unreadMessageCount = 0;
   int _pendingInvitations = 0;
   Set<String> _favoriteIds = {};
   RealtimeChannel? _notifChannel;
+  RealtimeChannel? _msgChannel;
 
   // Covers A2 — arrow function
   List<VerifiedArtisan> get _filteredArtisans {
@@ -51,18 +59,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<VerifiedArtisan> get _searchResults {
     final hasQuery = _searchQuery.isNotEmpty;
-    final hasFilter = _searchCategory != 'All';
-    if (!hasQuery && !hasFilter) return [];
+    final hasCategory = _searchCategory != 'All';
+    final hasDistrict = _filterDistrict != 'All';
+    final hasRating = _filterMinRating > 0;
+    final hasPrice = _filterMaxPrice != null;
+    final hasAvailable = _filterAvailableOnly;
+    if (!hasQuery && !hasCategory && !hasDistrict && !hasRating && !hasPrice && !hasAvailable) return [];
     final q = _searchQuery.toLowerCase();
     final trade = (_categoryToTrade[_searchCategory] ?? _searchCategory).toLowerCase();
-    return _artisans.where((a) {
+    var results = _artisans.where((a) {
       final matchesQuery = !hasQuery ||
           a.name.toLowerCase().contains(q) ||
           a.trade.toLowerCase().contains(q) ||
           a.skills.any((s) => s.toLowerCase().contains(q));
-      final matchesCategory = !hasFilter || a.trade.toLowerCase() == trade;
-      return matchesQuery && matchesCategory;
+      final matchesCategory = !hasCategory || a.trade.toLowerCase() == trade;
+      final matchesDistrict = !hasDistrict ||
+          a.location.toLowerCase().contains(_filterDistrict.toLowerCase());
+      final matchesRating = a.rating >= _filterMinRating;
+      final matchesPrice = _filterMaxPrice == null || a.startingPrice <= _filterMaxPrice!;
+      final matchesAvailable = !_filterAvailableOnly || a.isAvailable;
+      return matchesQuery && matchesCategory && matchesDistrict &&
+          matchesRating && matchesPrice && matchesAvailable;
     }).toList();
+    if (_sortBy == 'price_asc') {
+      results.sort((a, b) => a.startingPrice.compareTo(b.startingPrice));
+    } else if (_sortBy == 'price_desc') {
+      results.sort((a, b) => b.startingPrice.compareTo(a.startingPrice));
+    } else {
+      results.sort((a, b) => b.rating.compareTo(a.rating));
+    }
+    return results;
+  }
+
+  int get _activeFilterCount {
+    int count = 0;
+    if (_filterDistrict != 'All') count++;
+    if (_filterMinRating > 0) count++;
+    if (_filterMaxPrice != null) count++;
+    if (_filterAvailableOnly) count++;
+    if (_sortBy != 'rating') count++;
+    return count;
   }
 
   @override
@@ -79,7 +115,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadFavorites();
     }
     _loadUnreadCount();
+    _loadUnreadMessageCount();
     _subscribeToNotifications();
+    _subscribeToMessages();
   }
 
   void _subscribeToNotifications() {
@@ -89,6 +127,21 @@ class _HomeScreenState extends State<HomeScreen> {
       userId,
       _loadUnreadCount,
     );
+  }
+
+  void _subscribeToMessages() {
+    _msgChannel = SupabaseService.subscribeToNewMessages(
+      _loadUnreadMessageCount,
+    );
+  }
+
+  Future<void> _loadUnreadMessageCount() async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final count = await SupabaseService.getUnreadMessageCount(userId);
+      if (mounted) setState(() => _unreadMessageCount = count);
+    } catch (_) {}
   }
 
   Future<void> _loadPendingInvitations() async {
@@ -154,6 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _notifChannel?.unsubscribe();
+    _msgChannel?.unsubscribe();
     _searchController.dispose();
     super.dispose();
   }
@@ -499,6 +553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() => _currentIndex = index);
                 if (index == 1) _loadPendingInvitations();
                 if (index == 2) _loadMyBids();
+                if (index == 4) _loadUnreadMessageCount();
               },
               items: [
                 BottomNavigationBarItem(
@@ -522,8 +577,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: localizations.profile,
                 ),
                 BottomNavigationBarItem(
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
-                  activeIcon: const Icon(Icons.chat_bubble_rounded),
+                  icon: _messagesIcon(),
+                  activeIcon: _messagesIcon(active: true),
                   label: 'Messages',
                 ),
               ],
@@ -536,6 +591,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: (index) {
                 setState(() => _currentIndex = index);
                 if (index == 2) _loadMyJobs();
+                if (index == 3) _loadUnreadMessageCount();
               },
               items: [
                 BottomNavigationBarItem(
@@ -553,8 +609,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: localizations.jobs,
                 ),
                 BottomNavigationBarItem(
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
-                  activeIcon: const Icon(Icons.chat_bubble_rounded),
+                  icon: _messagesIcon(),
+                  activeIcon: _messagesIcon(active: true),
                   label: 'Messages',
                 ),
                 BottomNavigationBarItem(
@@ -947,40 +1003,49 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildSearchScreen(BuildContext context) {
     final results = _searchResults;
     final hasQuery = _searchQuery.isNotEmpty;
-    final hasFilter = _searchCategory != 'All';
+    final hasAnySearch =
+        hasQuery || _searchCategory != 'All' || _activeFilterCount > 0;
 
     return Column(
       children: [
-        // Search bar pinned at top
+        // Search bar + filter button pinned at top
         Container(
           color: AppTheme.primary,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: TextField(
-            controller: _searchController,
-            onChanged: (v) => setState(() => _searchQuery = v),
-            decoration: InputDecoration(
-              hintText: 'Search by name, trade or skill...',
-              prefixIcon:
-                  const Icon(Icons.search, color: AppTheme.textSecondary),
-              suffixIcon: hasQuery
-                  ? IconButton(
-                      icon: const Icon(Icons.clear,
-                          color: AppTheme.textSecondary),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    )
-                  : null,
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: 'Search by name, trade or skill...',
+                    prefixIcon:
+                        const Icon(Icons.search, color: AppTheme.textSecondary),
+                    suffixIcon: hasQuery
+                        ? IconButton(
+                            icon: const Icon(Icons.clear,
+                                color: AppTheme.textSecondary),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                  ),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
-            ),
+              const SizedBox(width: 8),
+              _buildFilterButton(),
+            ],
           ),
         ),
 
@@ -1001,7 +1066,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Results area
         Expanded(
-          child: !hasQuery && !hasFilter
+          child: !hasAnySearch
               ? _buildSearchPrompt()
               : results.isEmpty
                   ? _buildSearchEmpty()
@@ -1236,7 +1301,279 @@ class _HomeScreenState extends State<HomeScreen> {
             'Try a different name or category',
             style: TextStyle(color: AppTheme.textSecondary),
           ),
+          if (_activeFilterCount > 0) ...[
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => setState(() {
+                _filterDistrict = 'All';
+                _filterMinRating = 0.0;
+                _filterMaxPrice = null;
+                _filterAvailableOnly = false;
+                _sortBy = 'rating';
+              }),
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              label: const Text('Clear filters'),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildFilterButton() {
+    final count = _activeFilterCount;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        GestureDetector(
+          onTap: _showFilterSheet,
+          child: Container(
+            width: 46,
+            height: 48,
+            decoration: BoxDecoration(
+              color: count > 0 ? AppTheme.secondary : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.tune_rounded,
+              color: count > 0 ? Colors.white : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+        if (count > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: const BoxDecoration(
+                  color: Colors.red, shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: Text(
+                '$count',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showFilterSheet() {
+    var district = _filterDistrict;
+    var minRating = _filterMinRating;
+    var maxPrice = _filterMaxPrice;
+    var availableOnly = _filterAvailableOnly;
+    var sortBy = _sortBy;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    const Text(
+                      'Filter & Sort',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setSheet(() {
+                          district = 'All';
+                          minRating = 0.0;
+                          maxPrice = null;
+                          availableOnly = false;
+                          sortBy = 'rating';
+                        });
+                      },
+                      child: const Text('Clear all'),
+                    ),
+                  ],
+                ),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+
+                // District
+                const Text('Location',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: ['All', 'Gasabo', 'Kicukiro', 'Nyarugenge']
+                      .map((d) => ChoiceChip(
+                            label: Text(d),
+                            selected: district == d,
+                            selectedColor: AppTheme.primary,
+                            labelStyle: TextStyle(
+                                color: district == d
+                                    ? Colors.white
+                                    : AppTheme.textPrimary),
+                            onSelected: (_) =>
+                                setSheet(() => district = d),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // Available now
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Available now only',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    Switch(
+                      value: availableOnly,
+                      activeColor: AppTheme.primary,
+                      onChanged: (v) =>
+                          setSheet(() => availableOnly = v),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Min rating
+                Row(
+                  children: [
+                    const Text('Min rating',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text(
+                      minRating == 0
+                          ? 'Any'
+                          : '${minRating.toStringAsFixed(1)}+  ',
+                      style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: minRating,
+                  min: 0,
+                  max: 5,
+                  divisions: 10,
+                  activeColor: AppTheme.primary,
+                  label: minRating == 0
+                      ? 'Any'
+                      : minRating.toStringAsFixed(1),
+                  onChanged: (v) => setSheet(() => minRating = v),
+                ),
+                const SizedBox(height: 8),
+
+                // Max price
+                Row(
+                  children: [
+                    const Text('Max price (RWF)',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text(
+                      maxPrice == null
+                          ? 'Any'
+                          : '${(maxPrice! ~/ 1000)}k',
+                      style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: (maxPrice ?? 100000).toDouble(),
+                  min: 5000,
+                  max: 100000,
+                  divisions: 19,
+                  activeColor: AppTheme.primary,
+                  label: maxPrice == null
+                      ? 'Any'
+                      : '${(maxPrice! ~/ 1000)}k',
+                  onChanged: (v) => setSheet(
+                      () => maxPrice = v >= 100000 ? null : v.toInt()),
+                ),
+                const SizedBox(height: 16),
+
+                // Sort by
+                const Text('Sort by',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ('rating', 'Top Rated'),
+                    ('price_asc', 'Price: Low→High'),
+                    ('price_desc', 'Price: High→Low'),
+                  ]
+                      .map((pair) => ChoiceChip(
+                            label: Text(pair.$2),
+                            selected: sortBy == pair.$1,
+                            selectedColor: AppTheme.primary,
+                            labelStyle: TextStyle(
+                                color: sortBy == pair.$1
+                                    ? Colors.white
+                                    : AppTheme.textPrimary),
+                            onSelected: (_) =>
+                                setSheet(() => sortBy = pair.$1),
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Apply button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _filterDistrict = district;
+                        _filterMinRating = minRating;
+                        _filterMaxPrice = maxPrice;
+                        _filterAvailableOnly = availableOnly;
+                        _sortBy = sortBy;
+                      });
+                      Navigator.pop(ctx);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text(
+                      'Apply Filters',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1546,7 +1883,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                       ),
-                    if (job.status == JobStatus.booked)
+                    if (job.status == JobStatus.booked ||
+                        job.status == JobStatus.onTheWay ||
+                        job.status == JobStatus.inProgress)
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () => _confirmMarkComplete(job),
@@ -1564,32 +1903,56 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
-                    if (job.status == JobStatus.completed)
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.success.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check_circle_outline,
-                                  size: 14, color: AppTheme.success),
-                              SizedBox(width: 6),
-                              Text(
-                                'Completed',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.success,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
+                    if (job.status == JobStatus.completed) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check_circle_outline,
+                                size: 13, color: AppTheme.success),
+                            SizedBox(width: 4),
+                            Text(
+                              'Done',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.success,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
                       ),
+                      if (job.assignedArtisanId != null) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => showReviewSheet(
+                              context,
+                              artisanId: job.assignedArtisanId!,
+                              jobTitle: job.title,
+                            ),
+                            icon: const Icon(Icons.star_outline_rounded,
+                                size: 14, color: AppTheme.secondary),
+                            label: const Text(
+                              'Rate Artisan',
+                              style: TextStyle(
+                                  fontSize: 12, color: AppTheme.secondary),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              side: const BorderSide(color: AppTheme.secondary),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                     if (canCancel) ...[
                       const SizedBox(width: 10),
                       OutlinedButton.icon(
@@ -1678,6 +2041,14 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundColor: AppTheme.success,
           ),
         );
+        // Prompt homeowner to rate the artisan
+        if (job.assignedArtisanId != null) {
+          await showReviewSheet(
+            context,
+            artisanId: job.assignedArtisanId!,
+            jobTitle: job.title,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -2063,6 +2434,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Text(
                 _pendingInvitations > 9 ? '9+' : '$_pendingInvitations',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _messagesIcon({bool active = false}) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(active
+            ? Icons.chat_bubble_rounded
+            : Icons.chat_bubble_outline_rounded),
+        if (_unreadMessageCount > 0)
+          Positioned(
+            right: -6,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                _unreadMessageCount > 9 ? '9+' : '$_unreadMessageCount',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 9,
