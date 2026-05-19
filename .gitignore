@@ -46,6 +46,7 @@ app.*.map.json
 
 # Sensitive credentials — copy supabase_config.example.dart and fill in real values
 lib/config/supabase_config.dart
+lib/config/groq_config.dart
 
 # Firebase / Google Sign-In credentials (if added later)
 android/app/google-services.json

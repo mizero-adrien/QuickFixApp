@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
+import 'package:quickfix/services/groq_service.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
@@ -175,6 +176,24 @@ class _JobPostScreenState extends State<JobPostScreen> {
             child: const Text('Back to Home'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openAiHelper() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AiDescriptionSheet(
+        category: _selectedCategory != null
+            ? _categoryLabels[_selectedCategory!]!
+            : 'Not selected',
+        title: _titleController.text.trim(),
+        existingDescription: _descriptionController.text.trim(),
+        onAccepted: (generated) {
+          setState(() => _descriptionController.text = generated);
+        },
       ),
     );
   }
@@ -356,7 +375,40 @@ class _JobPostScreenState extends State<JobPostScreen> {
               const SizedBox(height: 16),
 
               // Description
-              _buildLabel('Job Description'),
+              Row(
+                children: [
+                  _buildLabel('Job Description'),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _openAiHelper,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('✨', style: TextStyle(fontSize: 13)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Write with AI',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _descriptionController,
@@ -467,4 +519,320 @@ class _JobPostScreenState extends State<JobPostScreen> {
           color: AppTheme.textPrimary,
         ),
       );
+}
+
+// ── AI Description Helper Bottom Sheet ───────────────────────────────────────
+
+class _AiDescriptionSheet extends StatefulWidget {
+  final String category;
+  final String title;
+  final String existingDescription;
+  final ValueChanged<String> onAccepted;
+
+  const _AiDescriptionSheet({
+    required this.category,
+    required this.title,
+    required this.existingDescription,
+    required this.onAccepted,
+  });
+
+  @override
+  State<_AiDescriptionSheet> createState() => _AiDescriptionSheetState();
+}
+
+class _AiDescriptionSheetState extends State<_AiDescriptionSheet> {
+  late final TextEditingController _notesController;
+  String? _generated;
+  bool _isGenerating = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill notes with whatever the homeowner typed so far
+    _notesController =
+        TextEditingController(text: widget.existingDescription);
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final notes = _notesController.text.trim();
+    if (notes.isEmpty) {
+      setState(() => _error = 'Please write a few rough notes first.');
+      return;
+    }
+    setState(() {
+      _isGenerating = true;
+      _error = null;
+      _generated = null;
+    });
+    try {
+      final result = await GroqService.improveJobDescription(
+        category: widget.category,
+        title: widget.title.isNotEmpty ? widget.title : 'Home repair job',
+        roughNotes: notes,
+      );
+      if (mounted) setState(() => _generated = result);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
+
+  void _accept() {
+    if (_generated == null) return;
+    widget.onAccepted(_generated!);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('✨',
+                      style: TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Job Description Helper',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Describe your problem in a few words — AI will write the rest.',
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Rough notes input
+            const Text(
+              'Your rough notes',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText:
+                    'e.g. "pipe burst under sink, water everywhere, urgent"',
+                filled: true,
+                fillColor: AppTheme.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(14),
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Generate button
+            SizedBox(
+              width: double.infinity,
+              child: _isGenerating
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 10),
+                            Text('Generating...',
+                                style: TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _generate,
+                      icon: const Text('✨',
+                          style: TextStyle(fontSize: 14)),
+                      label: Text(
+                        _generated == null ? 'Generate Description' : 'Regenerate',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7C3AED),
+                        foregroundColor: Colors.white,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+            ),
+
+            // Error
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: AppTheme.error.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 16, color: AppTheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.error),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Generated result
+            if (_generated != null) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Generated Description',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF7C3AED).withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Text(
+                  _generated!,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textPrimary,
+                    height: 1.6,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        side: BorderSide(color: Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Discard',
+                          style:
+                              TextStyle(color: AppTheme.textSecondary)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: _accept,
+                      icon: const Icon(Icons.check_rounded,
+                          size: 16, color: Colors.white),
+                      label: const Text(
+                        'Use This Description',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.success,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
