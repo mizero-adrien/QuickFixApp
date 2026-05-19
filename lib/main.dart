@@ -21,7 +21,6 @@ import 'package:quickfix/screens/notifications_screen.dart';
 import 'package:quickfix/screens/bids_management_screen.dart';
 import 'package:quickfix/screens/job_status_screen.dart';
 import 'package:quickfix/screens/job_detail_screen.dart';
-import 'package:quickfix/screens/conversations_screen.dart';
 import 'package:quickfix/screens/chat_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

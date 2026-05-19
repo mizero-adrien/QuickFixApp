@@ -92,6 +92,12 @@ class _ChatScreenState extends State<ChatScreen> {
         senderId: userId,
         body: text,
       );
+      // Reload immediately — don't wait for Realtime subscription
+      final msgs = await SupabaseService.getMessages(_conversation.id);
+      if (mounted) {
+        setState(() => _messages = msgs);
+        _scrollToBottom();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

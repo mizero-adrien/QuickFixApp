@@ -1,11 +1,12 @@
 [![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=23237678)
 
 
-# QuickFix 🔧
+# QuickFix
 ### Find. Book. Fix.
 
 A two-sided mobile marketplace connecting homeowners and tenants in Kigali,
-Rwanda with verified, rated home service artisans — built with Flutter & Dart.
+Rwanda with verified, rated home service artisans — built with Flutter, Dart,
+and a live Supabase PostgreSQL backend.
 
 ---
 
@@ -30,25 +31,30 @@ both sides of the market.
 
 | Name | Registration Number | Primary Contributions |
 |---|---|---|
-| [Adrien MIZERO] | [223019090] | Flutter UI, Navigation, Forms |
-| [Bernardine UWITUZE] | [223014064] | Data Models, OOP, Dart Fundamentals |
+| Adrien MIZERO | 223019090 | Flutter UI, Navigation, Forms, Supabase Integration |
+| Bernardine UWITUZE | 223014064 | Data Models, OOP, Dart Fundamentals |
 
 ---
 
 ## App Features
 
 ### For Homeowners
-- Browse verified, rated artisans by category
+- Browse verified, rated artisans by category with real-time search
 - View full artisan profiles with skills, reviews, and pricing
-- Post a job request with budget and description
-- Book an artisan directly from their profile
-- Track job status in real time
+- Post a job request with budget, description, and photo
+- Book an artisan directly or accept a bid from the bids panel
+- Track job status through a 6-step visual stepper in real time
+- Save favourite artisans and manage them from a dedicated screen
+- Receive push-style in-app notifications for new bids and booking updates
+- Mark a job complete to trigger artisan rating and completed-jobs update
 
 ### For Artisans
-- Set up a professional profile after signup
-- Browse available job requests from homeowners
-- Send bids with custom price and note
-- Build reputation through ratings and reviews
+- Set up a verified professional profile after signup
+- Browse available job requests filtered by category
+- Send bids with custom price and message; receive acceptance notifications
+- Advance job status (On the Way, In Progress) from the dashboard
+- Edit profile, manage invitations, and track earnings
+- Receive in-app notifications when a homeowner accepts or declines a bid
 
 ---
 
@@ -56,87 +62,165 @@ both sides of the market.
 
 | Technology | Purpose |
 |---|---|
-| Flutter 3.38.9 | Cross-platform mobile UI framework |
-| Dart | Programming language |
+| Flutter 3.x | Cross-platform mobile UI framework |
+| Dart 3.x | Programming language |
+| Supabase | Backend-as-a-Service (auth, PostgreSQL database, storage) |
+| supabase_flutter ^2.9.0 | Supabase client SDK for Flutter |
+| PostgreSQL | Relational database hosted on Supabase |
 | Material Design 3 | UI component system and theming |
-| Flutter Navigator | Multi-screen named route navigation |
+| flutter_localizations | Internationalisation (English, French, Kinyarwanda) |
+| image_picker ^1.1.2 | Profile photo upload |
+| Flutter Navigator 2 | Named route navigation |
 | Stateful Widgets | Local state management |
 
 ---
 
+## Database Schema
+
+See [`docs/database_schema.md`](docs/database_schema.md) for full table definitions,
+column types, constraints, and relationship diagram.
+
+**Tables at a glance:**
+
+| Table | Purpose |
+|---|---|
+| `artisans` | Artisan profiles, skills, rating, completed_jobs |
+| `homeowners` | Homeowner profiles and contact info |
+| `jobs` | Job postings from homeowners |
+| `bids` | Artisan bids on jobs |
+| `bookings` | Direct booking records (instant book flow) |
+| `reviews` | Homeowner reviews of artisans (1–5 stars) |
+| `notifications` | In-app notification inbox for both user types |
+| `favorites` | Homeowner ↔ artisan saved relationships |
+| `invitations` | Direct job invitations from homeowners to artisans |
+
+---
+
 ## Project Structure
+
+```
 lib/
+├── config/
+│   ├── supabase_config.dart         # Supabase URL + anon key (git-ignored)
+│   └── supabase_config.example.dart # Template for new contributors
+├── l10n/
+│   └── app_localizations.dart       # EN / FR / RW string translations
 ├── models/
 │   ├── artisan.dart        # Artisan, VerifiedArtisan, ServiceProvider, Rateable
+│   ├── bid.dart            # Bid, BidStatus
+│   ├── app_notification.dart # AppNotification
 │   ├── homeowner.dart      # Homeowner, UserSession, UserType
 │   ├── job.dart            # Job, JobStatus, ServiceCategory
 │   └── review.dart         # Review
 ├── screens/
-│   ├── splash_screen.dart          # Animated splash screen
-│   ├── login_screen.dart           # Login with email/password
-│   ├── signup_screen.dart          # Signup with role selection
-│   ├── artisan_setup_screen.dart   # Artisan profile setup
-│   ├── home_screen.dart            # Homeowner home / Artisan dashboard
-│   ├── artisan_detail_screen.dart  # Artisan profile detail
-│   ├── booking_form_screen.dart    # Job booking form
-│   ├── job_post_screen.dart        # Homeowner job posting form
-│   └── job_list_screen.dart        # Artisan job listings
-├── widgets/
-│   ├── artisan_card.dart    # Reusable artisan card widget
-│   ├── category_chip.dart   # Reusable category filter chip
-│   └── review_card.dart     # Reusable review card widget
-├── data/
-│   └── dummy_data.dart      # Sample artisans, jobs, reviews
+│   ├── splash_screen.dart              # Animated splash + session restore
+│   ├── login_screen.dart               # Email/password login + forgot password
+│   ├── signup_screen.dart              # Signup with role selection
+│   ├── password_recovery_screen.dart   # Deep-link password reset
+│   ├── artisan_setup_screen.dart       # Artisan profile setup after signup
+│   ├── home_screen.dart                # Homeowner home / Artisan dashboard
+│   ├── artisan_detail_screen.dart      # Artisan profile detail + reviews
+│   ├── booking_form_screen.dart        # Direct booking form
+│   ├── job_post_screen.dart            # Homeowner job posting form
+│   ├── job_list_screen.dart            # Artisan available jobs list
+│   ├── job_status_screen.dart          # 6-step visual job status tracker
+│   ├── bids_management_screen.dart     # Homeowner bids review panel
+│   ├── invitations_screen.dart         # Artisan received invitations
+│   ├── notifications_screen.dart       # In-app notification inbox
+│   ├── favorites_screen.dart           # Homeowner saved artisans
+│   ├── artisan_edit_profile_screen.dart
+│   └── homeowner_edit_profile_screen.dart
+├── services/
+│   └── supabase_service.dart  # All Supabase DB + auth calls
 ├── theme/
-│   └── app_theme.dart       # Material Design 3 theme and colours
-└── main.dart                # App entry point and named routes
+│   └── app_theme.dart         # Material Design 3 theme and colours
+├── widgets/
+│   ├── artisan_card.dart       # Reusable artisan card (favorite toggle)
+│   ├── category_chip.dart      # Reusable category filter chip
+│   ├── language_selector.dart  # EN / FR / RW language switcher
+│   ├── rating_dialog.dart      # Star rating + comment dialog
+│   └── review_card.dart        # Reusable review card widget
+└── main.dart                   # App entry point, routes, deep-link listener
+```
 
 ---
 
 ## How to Run
 
 ### Prerequisites
-- Flutter SDK 3.38.9 or higher
-- Android SDK or iOS Simulator
+- Flutter SDK 3.x (stable channel)
+- Android SDK (API 21+) or iOS Simulator
 - VS Code with Flutter and Dart extensions
+- A Supabase project (free tier is sufficient)
 
 ### Steps
 
 **1. Clone the repository**
 ```bash
-git clone [https://github.com/Pelino-Courses/progressive-capstone-project-triad.git]
+git clone https://github.com/Pelino-Courses/progressive-capstone-project-triad.git
 cd progressive-capstone-project-triad
 ```
 
-**2. Install dependencies**
+**2. Configure Supabase credentials**
+
+Copy the example config and fill in your project values:
+```bash
+cp lib/config/supabase_config.example.dart lib/config/supabase_config.dart
+```
+
+Then edit `lib/config/supabase_config.dart`:
+```dart
+class SupabaseConfig {
+  static const String url = 'https://YOUR_PROJECT_ID.supabase.co';
+  static const String anonKey = 'YOUR_ANON_KEY';
+}
+```
+
+Find these values in your Supabase Dashboard under **Project Settings → API**.
+
+**3. Apply database migrations**
+
+Run the SQL from [`docs/database_schema.md`](docs/database_schema.md) in the
+Supabase Dashboard SQL editor to create all tables, indexes, and triggers.
+
+**4. Configure authentication redirect URLs** (for password recovery on Android)
+
+In Supabase Dashboard → Authentication → URL Configuration → Redirect URLs, add:
+```
+com.quickfix.quickfix://login-callback
+```
+
+**5. Install dependencies**
 ```bash
 flutter pub get
 ```
 
-**3. Run the app**
+**6. Run the app**
 ```bash
 flutter run
 ```
 
-**4. Verify environment**
+**7. Verify your Flutter environment**
 ```bash
 flutter doctor
 ```
 
 ### Test Accounts
 
-Since this version uses dummy data, use any credentials to log in:
+Sign up through the app to create real accounts stored in Supabase Auth:
 
 | Role | How to access |
 |---|---|
-| Homeowner | Sign up → select Homeowner → fill form |
-| Artisan | Sign up → select Artisan → complete profile setup |
+| Homeowner | Sign up → select Homeowner → fill name, phone, district |
+| Artisan | Sign up → select Artisan → complete profile setup (trade, skills, experience) |
 
 ---
 
 ## Flutter Doctor Output
+
+```
 Doctor summary (to see all details, run flutter doctor -v):
-[√] Flutter (Channel stable, 3.38.9)
+[√] Flutter (Channel stable, 3.x)
 [√] Windows Version (Windows 11 Home)
 [√] Android toolchain - develop for Android devices
 [√] Chrome - develop for the web
@@ -145,62 +229,66 @@ Doctor summary (to see all details, run flutter doctor -v):
 [√] Network resources
 
 No issues found!
+```
 
 ---
 
-## Mini-Capstone Snapshot — Parts A–D
-
-This submission adds the following to the progressive project:
+## Mini-Capstone Snapshot — Parts A–E
 
 ### Part A — Dart Fundamentals
 - Explicit typed variables, `final`, `const` throughout all model and screen files
-- Null safety operators (`?`, `!`, `??`) used in `UserSession`, `Homeowner`, and screen arguments
-- `List`, `Map`, and `Set` used in `dummy_data.dart`, `artisan_setup_screen.dart`, and `job_list_screen.dart`
+- Null safety operators (`?`, `!`, `??`) in `UserSession`, `Homeowner`, service calls
+- `List`, `Map`, and `Set` used in models, artisan setup, and favorites tracking
 - Control flow with `if/else`, `switch`, and ternary operators across models and screens
+- `Future` and `async/await` for all Supabase DB and auth operations
 
 ### Part B — OOP & Data Models
-- 4 model classes: `Artisan`, `VerifiedArtisan`, `Homeowner`, `Job`, `Review`
-- Inheritance: `VerifiedArtisan extends Artisan`
+- 5 model classes: `Artisan`, `VerifiedArtisan`, `Homeowner`, `Job`, `Bid`, `Review`, `AppNotification`
+- Inheritance: `VerifiedArtisan extends Artisan`, `Homeowner implements ServiceProvider`
 - Abstract class: `ServiceProvider` implemented by both `Artisan` and `Homeowner`
 - Mixin: `Rateable` mixed into `Artisan` for shared rating behaviour
-- `Future` and `async/await` used in `fetchArtisans()`, `fetchReviewsForArtisan()`, and all form submissions
+- Enums: `JobStatus`, `ServiceCategory`, `BidStatus`, `UserType`
 
 ### Part C — Flutter UI & Widgets
-- Home screen displays real dummy data in a 2-column `GridView`
-- Layout widgets used: `GridView`, `ListView`, `Column`, `Row`, `Stack`
-- 3 custom reusable widgets: `ArtisanCard`, `CategoryChip`, `ReviewCard`
+- Home screen displays live Supabase data in a 2-column `GridView`
+- Layout widgets: `GridView`, `ListView`, `Column`, `Row`, `Stack`, `SliverAppBar`
+- 5 custom reusable widgets: `ArtisanCard`, `CategoryChip`, `ReviewCard`, `RatingDialog`, `LanguageSelector`
 - Material Design 3 theme applied via `AppTheme` with full `ColorScheme`
+- Animated stepper in `JobStatusScreen` using `AnimationController` + `Tween`
 
 ### Part D — Navigation & Forms
-- 7 named routes connected via `MaterialApp` routes map
-- Data passed between screens: artisan object from Home → Detail → Booking Form
-- 3 validated forms: Login, Signup, Booking Form, Job Post, Artisan Setup
-- Form validation includes email regex, phone pattern, length checks, password match
+- 15+ named routes connected via `MaterialApp` routes map
+- Data passed between screens via route arguments
+- Validated forms: Login, Signup, Booking, Job Post, Artisan Setup, Password Recovery
+- Deep-link navigation for password recovery on Android (`com.quickfix.quickfix://login-callback`)
+
+### Part E — Backend Integration (Supabase)
+- Real authentication (email/password) with Supabase Auth; session persisted across app restarts
+- Full CRUD operations on all 9 database tables via `supabase_flutter`
+- PostgreSQL triggers for automatic rating recalculation and completed-jobs counting
+- Row-level security (RLS) policies on all tables
+- In-app notification system with unread badge count
+- Image upload via Supabase Storage + `image_picker`
+- Internationalisation in English, French, and Kinyarwanda
 
 ---
 
-## Design Mockups
+## Documentation
 
-Stitch mockups are in the `/design/` folder:
-
-| File | Screen |
+| File | Contents |
 |---|---|
-| `01_home_screen.png` | Homeowner home with artisan grid |
-| `02_detail_screen.png` | Artisan profile detail |
-| `03_form_screen.png` | Job booking request form |
-
-See `DESIGN.md` for the full design system including colour palette,
-typography, and component style rationale.
+| [`docs/database_schema.md`](docs/database_schema.md) | All tables, columns, types, constraints, and relationships |
+| [`docs/user_flows.md`](docs/user_flows.md) | Complete end-to-end user flows for both roles |
 
 ---
 
 ## Repository
 
-- **GitHub:** [https://github.com/Pelino-Courses/progressive-capstone-project-triad.git]
-- **Submission Tag:** `mini-capstone-part-a-d`
+- **GitHub:** https://github.com/Pelino-Courses/progressive-capstone-project-triad
+- **Submission Tag:** `mini-capstone-final`
 
 ---
 
 *University of Rwanda — BSc Information Technology*
 *Mobile Application Development with Flutter & Dart*
-*Mini-Capstone Parts A–D | 2026*
+*Progressive Capstone Project | 2026*
