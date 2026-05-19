@@ -117,10 +117,6 @@ class SupabaseService {
     }
   }
 
-  static String _buildPasswordRecoveryRedirectUrl() {
-    final baseUrl = Uri.base.toString().split('#').first;
-    return '$baseUrl#/password-recovery';
-  }
 
   static Uri _normalizeRecoveryUrl(Uri uri) {
     final fragment = uri.fragment;
@@ -353,12 +349,12 @@ class SupabaseService {
       'budget_rwf': budgetRwf,
       'status': 'requested',
       if (isDirect) 'assigned_artisan_id': assignedArtisanId,
-      if (photoUrl != null) 'photo_url': photoUrl,
+      'photo_url': ?photoUrl,
     }).select().single();
 
     if (isDirect) {
       await createNotification(
-        userId: assignedArtisanId!,
+        userId: assignedArtisanId,
         type: 'job_invitation',
         title: 'New Job Invitation',
         body: 'You have been directly booked for: $title',
@@ -1034,7 +1030,7 @@ class SupabaseService {
     final created = await _db.from('conversations').insert({
       'homeowner_id': homeownerId,
       'artisan_id': artisanId,
-      if (jobId != null) 'job_id': jobId,
+      'job_id': ?jobId,
       'last_message_at': DateTime.now().toIso8601String(),
     }).select('id').single();
     return created['id'] as String;
@@ -1078,6 +1074,37 @@ class SupabaseService {
             column: 'conversation_id',
             value: conversationId,
           ),
+          callback: (_) => onNew(),
+        )
+        .subscribe();
+  }
+
+  // Returns total unread message count across ALL conversations for this user.
+  static Future<int> getUnreadMessageCount(String userId) async {
+    final convs = await _db
+        .from('conversations')
+        .select('id')
+        .or('homeowner_id.eq.$userId,artisan_id.eq.$userId');
+    if (convs.isEmpty) return 0;
+    final convIds = convs.map((c) => c['id'] as String).toList();
+    final unread = await _db
+        .from('messages')
+        .select('id')
+        .inFilter('conversation_id', convIds)
+        .neq('sender_id', userId)
+        .eq('is_read', false);
+    return (unread as List).length;
+  }
+
+  // Subscribe to ANY new message insert visible to the current user.
+  // Use this to drive the nav badge — fires whenever the other person sends.
+  static RealtimeChannel subscribeToNewMessages(void Function() onNew) {
+    return _db
+        .channel('new_messages_badge')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
           callback: (_) => onNew(),
         )
         .subscribe();
