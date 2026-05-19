@@ -45,6 +45,23 @@ class _JobPostScreenState extends State<JobPostScreen> {
     ServiceCategory.masonry: 'masonry',
   };
 
+  bool _categoryPreFilled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_categoryPreFilled) return;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['category'] is String) {
+      final label = (args['category'] as String).toLowerCase();
+      final match = ServiceCategory.values.where(
+        (c) => c.name.toLowerCase() == label,
+      ).firstOrNull;
+      if (match != null) setState(() => _selectedCategory = match);
+    }
+    _categoryPreFilled = true;
+  }
+
   @override
   void dispose() {
     _titleController.dispose();

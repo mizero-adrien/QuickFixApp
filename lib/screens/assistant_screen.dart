@@ -2,6 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:quickfix/services/groq_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
 
+// Extracts and strips the CATEGORY: tag the AI appends when it recognises a
+// home-problem description. Returns (cleanText, category) — category is null
+// when no tag is present.
+({String text, String? category}) _parseCategory(String raw) {
+  final match = RegExp(
+    r'\n?CATEGORY:\s*(Plumbing|Electrical|Painting|Carpentry|Cleaning|Masonry)\s*$',
+    caseSensitive: false,
+  ).firstMatch(raw);
+  if (match == null) return (text: raw.trim(), category: null);
+  final category = match.group(1)!;
+  final clean = raw.substring(0, match.start).trim();
+  return (text: clean, category: category);
+}
+
 class AssistantScreen extends StatefulWidget {
   const AssistantScreen({super.key});
 
@@ -62,8 +76,13 @@ class _AssistantScreenState extends State<AssistantScreen> {
       );
       _history.add({'role': 'user', 'content': trimmed});
       _history.add({'role': 'assistant', 'content': reply});
+      final parsed = _parseCategory(reply);
       if (mounted) {
-        setState(() => _messages.add(_Msg(role: 'assistant', text: reply)));
+        setState(() => _messages.add(_Msg(
+              role: 'assistant',
+              text: parsed.text,
+              category: parsed.category,
+            )));
         _scrollToBottom();
       }
     } catch (e) {
@@ -310,8 +329,9 @@ class _Msg {
   final String text;
   final bool isError;
   final DateTime time;
+  final String? category; // detected from CATEGORY: tag
 
-  _Msg({required this.role, required this.text, this.isError = false})
+  _Msg({required this.role, required this.text, this.isError = false, this.category})
       : time = DateTime.now();
 }
 
@@ -403,6 +423,44 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (msg.category != null) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      '/post-job',
+                      arguments: {'category': msg.category},
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.add_circle_outline,
+                              color: Colors.white, size: 14),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Post a ${msg.category} Job',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Text(
                   _fmt(msg.time),
