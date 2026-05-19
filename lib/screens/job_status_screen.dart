@@ -3,6 +3,7 @@ import 'package:quickfix/models/homeowner.dart';
 import 'package:quickfix/models/job.dart';
 import 'package:quickfix/services/supabase_service.dart';
 import 'package:quickfix/theme/app_theme.dart';
+import 'package:quickfix/widgets/review_sheet.dart';
 
 // One entry in the visual stepper
 class _StepDef {
@@ -116,13 +117,24 @@ class _JobStatusScreenState extends State<JobStatusScreen>
       ),
     );
     if (confirmed == true) {
+      final job = _job!;
       await SupabaseService.markJobComplete(
-        jobId: _job!.id,
-        artisanId: _job!.assignedArtisanId,
-        jobTitle: _job!.title,
+        jobId: job.id,
+        artisanId: job.assignedArtisanId,
+        jobTitle: job.title,
       );
       await SupabaseService.refreshArtisanSession();
-      await _load(_job!.id);
+      await _load(job.id);
+      // Prompt homeowner to rate the artisan
+      if (mounted &&
+          UserSession.userType == UserType.homeowner &&
+          job.assignedArtisanId != null) {
+        await showReviewSheet(
+          context,
+          artisanId: job.assignedArtisanId!,
+          jobTitle: job.title,
+        );
+      }
     }
   }
 
