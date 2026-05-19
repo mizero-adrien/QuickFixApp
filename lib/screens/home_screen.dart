@@ -477,11 +477,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           const LanguageSelector(),
-          IconButton(
-            icon: const Icon(Icons.smart_toy_outlined, color: Colors.white),
-            tooltip: 'QuickFix Assistant',
-            onPressed: () => Navigator.pushNamed(context, '/assistant'),
-          ),
           Stack(
             children: [
               IconButton(
@@ -525,28 +520,48 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _getBody(),
 
-      // FAB for homeowner to post a job
-      floatingActionButton: !isArtisan
-          ? FloatingActionButton.extended(
-              onPressed: () =>
-                  Navigator.pushNamed(context, '/post-job').then((posted) {
-                    _loadMyJobs();
-                    if (posted == true) {
-                      // Switch to My Jobs tab so user sees their new job immediately
-                      setState(() => _currentIndex = 2);
-                    }
-                  }),
-              backgroundColor: AppTheme.secondary,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Post a Job',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+      floatingActionButton: isArtisan
+          ? FloatingActionButton(
+              heroTag: 'assistant',
+              onPressed: () => Navigator.pushNamed(context, '/assistant'),
+              backgroundColor: const Color(0xFF7C3AED),
+              tooltip: 'QuickFix Assistant',
+              child: const Icon(Icons.smart_toy_outlined, color: Colors.white),
             )
-          : null,
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'assistant',
+                  onPressed: () => Navigator.pushNamed(context, '/assistant'),
+                  backgroundColor: const Color(0xFF7C3AED),
+                  tooltip: 'QuickFix Assistant',
+                  child: const Icon(Icons.smart_toy_outlined,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton.extended(
+                  heroTag: 'postJob',
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/post-job').then((posted) {
+                        _loadMyJobs();
+                        if (posted == true) {
+                          setState(() => _currentIndex = 2);
+                        }
+                      }),
+                  backgroundColor: AppTheme.secondary,
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text(
+                    'Post a Job',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
 
       bottomNavigationBar: isArtisan
           ? BottomNavigationBar(
