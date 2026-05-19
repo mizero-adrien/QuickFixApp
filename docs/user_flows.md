@@ -21,6 +21,8 @@ Each flow shows every screen, decision point, and database/notification event.
 12. [Notifications Inbox](#12-notifications-inbox)
 13. [Profile Editing](#13-profile-editing)
 14. [Language Switching](#14-language-switching)
+15. [AI: QuickFix Assistant Chatbot](#15-ai-quickfix-assistant-chatbot)
+16. [AI: Job Description Helper](#16-ai-job-description-helper)
 
 ---
 
@@ -123,10 +125,21 @@ HomeScreen (Homeowner — tab 0: Home)
 ## 5. Homeowner: Post a Job & Manage Bids
 
 ```
-HomeScreen (Homeowner — tab 2: Post Job)
+HomeScreen (Homeowner) — "Post a Job" FAB
   └─> JobPostScreen
-        ├─> Enter title, description, category, location, budget
+        ├─> Enter title, category, location, budget
+        ├─> Description field
+        │     └─> "✨ Write with AI" button (optional)
+        │           └─> AI Description Sheet
+        │                 ├─> Type rough notes (or pre-filled from description)
+        │                 ├─> Tap "Generate"
+        │                 │     ├─> [Groq API] llama-3.3-70b-versatile
+        │                 │     └─> Result shown in purple-tinted preview box
+        │                 ├─> "Regenerate" to get a new version
+        │                 ├─> "Use This Description" → fills description field
+        │                 └─> "Discard" → closes sheet, keeps original text
         ├─> Upload optional job photo
+        │     └─> [Storage] Supabase Storage → job-photos bucket
         └─> Tap "Post Job"
               ├─> [DB] INSERT INTO jobs  (status: requested)
               └─> Navigate back to HomeScreen
@@ -332,6 +345,78 @@ HomeScreen AppBar — globe icon
                           └─> All AppLocalizations strings update immediately
                                 (no app restart required)
 ```
+
+---
+
+## 15. AI: QuickFix Assistant Chatbot
+
+Accessible from the home screen as a floating button for both user types.
+
+```
+HomeScreen (any role)
+  └─> "✨ robot" floating button
+        └─> AssistantScreen  (route: /assistant)
+              ├─> Welcome message pre-loaded
+              ├─> Suggestion chips shown until first message is sent:
+              │     "How much does plumbing cost in Kigali?"
+              │     "How do I post a job?" etc.
+              ├─> User types or taps a suggestion
+              │     └─> [Groq API] assistantChat(history, userMessage)
+              │           system prompt includes: app usage, categories,
+              │           Kigali price ranges, language detection
+              │
+              ├─> Response type A — General answer
+              │     └─> White chat bubble displayed on left
+              │
+              ├─> Response type B — Category recommendation
+              │     The AI appends: CATEGORY: [Plumbing|Electrical|...]
+              │     └─> App strips the tag from display text
+              │           └─> Gradient "Post a [Category] Job" button appears
+              │                 └─> Tap
+              │                       └─> JobPostScreen with category pre-selected
+              │                             └─> (continues job post flow — see flow 5)
+              │
+              ├─> Response type C — Cost estimate
+              │     └─> Price range in RWF shown in chat bubble
+              │
+              ├─> Conversation history kept for multi-turn context
+              ├─> Clear chat button (top-right) resets history
+              └─> Animated 3-dot thinking indicator while waiting for API
+```
+
+**Language:** The assistant detects and replies in the same language the user writes in
+(English, French, or Kinyarwanda).
+
+---
+
+## 16. AI: Job Description Helper
+
+Embedded inside `JobPostScreen`; helps homeowners who struggle to describe their problem.
+
+```
+JobPostScreen
+  └─> "✨ Write with AI" button (next to Description label)
+        └─> _AiDescriptionSheet (bottom sheet)
+              ├─> Notes text field
+              │     Pre-filled with whatever the homeowner had already typed
+              ├─> Tap "Generate"
+              │     ├─> Validates: notes field must not be empty
+              │     └─> [Groq API] improveJobDescription(category, title, roughNotes)
+              │           model: llama-3.3-70b-versatile
+              │           max_tokens: 220  |  temperature: 0.65
+              │           prompt enforces: 2–4 sentences, specific location,
+              │           urgency if implied, expected outcome, no greetings
+              ├─> Result displayed in purple-tinted preview box
+              ├─> "Regenerate" → calls API again with same notes
+              ├─> "Use This Description"
+              │     └─> Fills description controller in JobPostScreen
+              │           └─> Sheet dismissed; homeowner continues posting
+              └─> "Discard"
+                    └─> Sheet dismissed; original description unchanged
+```
+
+**Error handling:** If the API call fails (network or key issue), a red error message
+appears inside the sheet; the homeowner can retry or close and write manually.
 
 ---
 

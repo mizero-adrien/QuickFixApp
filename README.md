@@ -40,13 +40,16 @@ both sides of the market.
 
 ### For Homeowners
 - Browse verified, rated artisans by category with real-time search
+- Filter artisans by district, minimum rating, maximum price, and availability
 - View full artisan profiles with skills, reviews, and pricing
 - Post a job request with budget, description, and photo
+- **AI job description helper** — tap ✨ Write with AI to turn rough notes into a clear, professional description (powered by Groq)
 - Book an artisan directly or accept a bid from the bids panel
 - Track job status through a 6-step visual stepper in real time
 - Save favourite artisans and manage them from a dedicated screen
 - Receive push-style in-app notifications for new bids and booking updates
-- Mark a job complete to trigger artisan rating and completed-jobs update
+- Mark a job complete and rate the artisan via the built-in review flow
+- **QuickFix Assistant** — floating chatbot button for Q&A, cost estimates in RWF, and category recommendations with a one-tap "Post a Job" shortcut
 
 ### For Artisans
 - Set up a verified professional profile after signup
@@ -55,6 +58,7 @@ both sides of the market.
 - Advance job status (On the Way, In Progress) from the dashboard
 - Edit profile, manage invitations, and track earnings
 - Receive in-app notifications when a homeowner accepts or declines a bid
+- **QuickFix Assistant** — floating chatbot button for app help and pricing guidance
 
 ---
 
@@ -67,6 +71,8 @@ both sides of the market.
 | Supabase | Backend-as-a-Service (auth, PostgreSQL database, storage) |
 | supabase_flutter ^2.9.0 | Supabase client SDK for Flutter |
 | PostgreSQL | Relational database hosted on Supabase |
+| Groq API (llama-3.3-70b-versatile) | AI: job description generation + chatbot |
+| http ^1.2.0 | HTTP client for Groq API calls |
 | Material Design 3 | UI component system and theming |
 | flutter_localizations | Internationalisation (English, French, Kinyarwanda) |
 | image_picker ^1.1.2 | Profile photo upload |
@@ -102,7 +108,9 @@ column types, constraints, and relationship diagram.
 lib/
 ├── config/
 │   ├── supabase_config.dart         # Supabase URL + anon key (git-ignored)
-│   └── supabase_config.example.dart # Template for new contributors
+│   ├── supabase_config.example.dart # Template for new contributors
+│   ├── groq_config.dart             # Groq API key (git-ignored)
+│   └── groq_config.example.dart    # Template — copy and fill in your key
 ├── l10n/
 │   └── app_localizations.dart       # EN / FR / RW string translations
 ├── models/
@@ -121,7 +129,8 @@ lib/
 │   ├── home_screen.dart                # Homeowner home / Artisan dashboard
 │   ├── artisan_detail_screen.dart      # Artisan profile detail + reviews
 │   ├── booking_form_screen.dart        # Direct booking form
-│   ├── job_post_screen.dart            # Homeowner job posting form
+│   ├── job_post_screen.dart            # Homeowner job posting form (+ AI helper)
+│   ├── assistant_screen.dart           # QuickFix AI chatbot (multi-turn, Groq)
 │   ├── job_list_screen.dart            # Artisan available jobs list
 │   ├── job_status_screen.dart          # 6-step visual job status tracker
 │   ├── bids_management_screen.dart     # Homeowner bids review panel
@@ -131,7 +140,8 @@ lib/
 │   ├── artisan_edit_profile_screen.dart
 │   └── homeowner_edit_profile_screen.dart
 ├── services/
-│   └── supabase_service.dart  # All Supabase DB + auth calls
+│   ├── supabase_service.dart  # All Supabase DB + auth calls
+│   └── groq_service.dart      # Groq AI: job description helper + chatbot
 ├── theme/
 │   └── app_theme.dart         # Material Design 3 theme and colours
 ├── widgets/
@@ -139,7 +149,8 @@ lib/
 │   ├── category_chip.dart      # Reusable category filter chip
 │   ├── language_selector.dart  # EN / FR / RW language switcher
 │   ├── rating_dialog.dart      # Star rating + comment dialog
-│   └── review_card.dart        # Reusable review card widget
+│   ├── review_card.dart        # Reusable review card widget
+│   └── review_sheet.dart       # Post-completion artisan rating sheet
 └── main.dart                   # App entry point, routes, deep-link listener
 ```
 
@@ -178,29 +189,46 @@ class SupabaseConfig {
 
 Find these values in your Supabase Dashboard under **Project Settings → API**.
 
-**3. Apply database migrations**
+**3. Configure Groq API key** (required for AI features)
+
+```bash
+cp lib/config/groq_config.example.dart lib/config/groq_config.dart
+```
+
+Then edit `lib/config/groq_config.dart`:
+```dart
+class GroqConfig {
+  static const String apiKey = 'YOUR_GROQ_API_KEY';
+  static const String model = 'llama-3.3-70b-versatile';
+}
+```
+
+Get a free key at [console.groq.com](https://console.groq.com) → API Keys.
+Both config files are git-ignored — your keys will never be committed.
+
+**4. Apply database migrations**
 
 Run the SQL from [`docs/database_schema.md`](docs/database_schema.md) in the
 Supabase Dashboard SQL editor to create all tables, indexes, and triggers.
 
-**4. Configure authentication redirect URLs** (for password recovery on Android)
+**5. Configure authentication redirect URLs** (for password recovery on Android)
 
 In Supabase Dashboard → Authentication → URL Configuration → Redirect URLs, add:
 ```
 com.quickfix.quickfix://login-callback
 ```
 
-**5. Install dependencies**
+**6. Install dependencies**
 ```bash
 flutter pub get
 ```
 
-**6. Run the app**
+**7. Run the app**
 ```bash
 flutter run
 ```
 
-**7. Verify your Flutter environment**
+**8. Verify your Flutter environment**
 ```bash
 flutter doctor
 ```
@@ -257,8 +285,8 @@ No issues found!
 - Animated stepper in `JobStatusScreen` using `AnimationController` + `Tween`
 
 ### Part D — Navigation & Forms
-- 15+ named routes connected via `MaterialApp` routes map
-- Data passed between screens via route arguments
+- 16+ named routes connected via `MaterialApp` routes map (including `/assistant`)
+- Data passed between screens via route arguments (e.g. category pre-fill from assistant → job post)
 - Validated forms: Login, Signup, Booking, Job Post, Artisan Setup, Password Recovery
 - Deep-link navigation for password recovery on Android (`com.quickfix.quickfix://login-callback`)
 
@@ -270,6 +298,14 @@ No issues found!
 - In-app notification system with unread badge count
 - Image upload via Supabase Storage + `image_picker`
 - Internationalisation in English, French, and Kinyarwanda
+
+### AI Integration (Groq API)
+- `GroqService.improveJobDescription()` — converts homeowner rough notes into a professional job description using `llama-3.3-70b-versatile`; accessible via ✨ Write with AI in the job post form
+- `GroqService.assistantChat()` — multi-turn conversation with a system prompt embedding QuickFix context: app usage, service categories, and typical Kigali price ranges in RWF
+- `AssistantScreen` — full chat UI with animated thinking indicator, suggestion chips, and conversation history
+- Category detection: AI appends `CATEGORY: [X]` when recognising a home problem; the app strips it from the bubble text and renders a gradient "Post a [Category] Job" button that navigates to `/post-job` with the category pre-selected
+- Available as a floating button on both homeowner (above Post a Job) and artisan home screens
+- Responds in the same language the user writes in (English, French, or Kinyarwanda)
 
 ---
 
